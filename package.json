@@ -1,7 +1,8 @@
 {
   "name": "tallybridge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "TallyBridge — conecta tu switcher a TallyComm",
+  "author": "Noctavox Films",
   "main": "electron-main.js",
   "scripts": {
     "start":     "node bridge.js",
@@ -22,26 +23,25 @@
   "build": {
     "appId":       "com.tallycomm.tallybridge",
     "productName": "TallyBridge",
-    "copyright":   "TallyComm",
+    "copyright":   "Copyright © 2025 Noctavox Films",
     "files": [
       "electron-main.js",
       "bridge.js",
       "bridge-ui.html",
-      "assets/**",
       "node_modules/**",
       "!node_modules/electron-builder/**",
       "!node_modules/.cache/**"
     ],
     "mac": {
       "category": "public.app-category.video",
-      "icon":     "assets/icon.icns",
+      "icon":     "icon.icns",
       "target": [
         { "target": "dmg", "arch": ["x64", "arm64"] }
       ],
       "darkModeSupport": true
     },
     "win": {
-      "icon":   "assets/icon.ico",
+      "icon":   "icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] }
       ]
