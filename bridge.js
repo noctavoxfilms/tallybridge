@@ -1,5 +1,6 @@
 // ============================================================
 // TallyBridge v1.2 — conecta OBS y RGBlink mini a TallyComm
+// Protocolo RGBlink: companion-module-rgblink-mini (Bitfocus) — puerto 1000, ASCII commands
 // ============================================================
 'use strict'
 const express   = require('express')
@@ -60,7 +61,7 @@ const state = {
     obsPort:       4455,
     obsPassword:   '',
     rgblinkHost:   '192.168.1.100',
-    rgblinkPort:   4001,
+    rgblinkPort:   1000,
     tallyUrl:      'https://tallycomm.com',
     tallyRoom:     ''
   },
@@ -76,12 +77,40 @@ let reconnectTimer   = null
 let manualDisconnect = false
 
 // ── RGBlink UDP ────────────────────────────────────────────────
-let rgbSocket       = null
-let rgbPingInterval = null
+// Protocolo basado en companion-module-rgblink-mini (Bitfocus)
+// Comandos: ASCII "<T" + ADDR + SN + CMD + DAT1-4 + CHECKSUM + ">"
+// Respuestas estándar: ASCII "<F...>" de 19 chars
+// Tally: paquetes binarios de 22 bytes (byte[0]=PST 0-indexed, byte[2]=PGM 0-indexed)
 
-const RGBLINK_PORT      = 4001
-const RGBLINK_HANDSHAKE = Buffer.from([0x68, 0x66, 0x01])
-const RGBLINK_INPUTS    = 4  // RGBlink mini: 4 inputs
+let rgbSocket       = null
+let rgbPollingTimer = null
+let rgbNextSn       = 0
+
+const RGBLINK_PORT   = 1000   // Puerto oficial RGBlink mini
+const RGBLINK_INPUTS = 4
+
+function rgblinkCalcChecksum(ADDR, SN, CMD, DAT1, DAT2, DAT3, DAT4) {
+  const sum = [ADDR, SN, CMD, DAT1, DAT2, DAT3, DAT4]
+    .reduce((acc, b) => acc + parseInt(b, 16), 0)
+  return (sum % 256).toString(16).toUpperCase().padStart(2, '0')
+}
+
+function rgblinkCommand(CMD, DAT1, DAT2, DAT3, DAT4) {
+  const ADDR = '00'
+  const SN   = rgbNextSn.toString(16).toUpperCase().padStart(2, '0')
+  rgbNextSn  = (rgbNextSn + 1) % 256
+  const CS   = rgblinkCalcChecksum(ADDR, SN, CMD, DAT1, DAT2, DAT3, DAT4)
+  return `<T${ADDR}${SN}${CMD}${DAT1}${DAT2}${DAT3}${DAT4}${CS}>`
+}
+
+function rgblinkSend(host, port, cmd) {
+  if (!rgbSocket) return
+  const buf = Buffer.from(cmd, 'utf8')
+  rgbSocket.send(buf, 0, buf.length, port, host, (err) => {
+    if (err) log(`RGBlink send error: ${err.message}`, 'warn')
+    else if (state.config.logCommands) log(`RGBlink → ${cmd}`)
+  })
+}
 
 function rgblinkConnect(cfg) {
   return new Promise((resolve, reject) => {
@@ -91,16 +120,18 @@ function rgblinkConnect(cfg) {
 
     const port = parseInt(cfg.rgblinkPort) || RGBLINK_PORT
     const host = cfg.rgblinkHost || '192.168.1.100'
+    rgbNextSn  = 0
 
     log(`Conectando a RGBlink mini en ${host}:${port}…`)
 
     const sock = dgram.createSocket('udp4')
-    rgbSocket = sock
+    rgbSocket  = sock
 
     let resolved = false
     const failWith = (err) => {
       if (resolved) return
       resolved = true
+      clearTimeout(connTimeout)
       try { sock.close() } catch {}
       rgbSocket = null
       state.connected = false
@@ -110,27 +141,21 @@ function rgblinkConnect(cfg) {
       reject(err)
     }
 
-    // Timeout si no hay respuesta en 5s — seguimos igual (UDP es sin conexión)
+    // Si el dispositivo no responde en 4s, asumimos conexión (UDP sin confirmación)
     const connTimeout = setTimeout(() => {
-      if (!resolved) {
-        resolved = true
-        state.connected = true
-        state.connecting = false
-        log('RGBlink mini conectado (esperando paquetes de tally…)', 'success')
-        sse('status', statusPayload())
-        // Inicializar inputs en UI
-        _initRgblinkScenes()
-        resolve()
-      }
-    }, 2000)
+      if (resolved) return
+      resolved = true
+      state.connected = true
+      state.connecting = false
+      log('RGBlink mini: sin respuesta al handshake — esperando paquetes de tally…', 'warn')
+      sse('status', statusPayload())
+      _initRgblinkScenes(host, port)
+      resolve()
+    }, 4000)
 
-    sock.on('error', (err) => {
-      clearTimeout(connTimeout)
-      failWith(err)
-    })
+    sock.on('error', (err) => { clearTimeout(connTimeout); failWith(err) })
 
     sock.on('message', (msg, rinfo) => {
-      // Primera respuesta confirma conexión
       if (!resolved) {
         resolved = true
         clearTimeout(connTimeout)
@@ -138,36 +163,25 @@ function rgblinkConnect(cfg) {
         state.connecting = false
         log(`RGBlink mini respondió desde ${rinfo.address}:${rinfo.port} ✓`, 'success')
         sse('status', statusPayload())
-        _initRgblinkScenes()
+        _initRgblinkScenes(host, port)
         resolve()
       }
-      handleRGBlinkPacket(msg)
+      handleRGBlinkMessage(msg)
     })
 
-    sock.bind(port, '0.0.0.0', () => {
-      log(`UDP abierto en puerto ${port}`)
-      // Enviar handshake
-      sock.send(RGBLINK_HANDSHAKE, 0, RGBLINK_HANDSHAKE.length, port, host, (err) => {
-        if (err) { clearTimeout(connTimeout); failWith(err); return }
-        log(`Handshake enviado a ${host}:${port}`)
-      })
+    sock.bind(0, '0.0.0.0', (err) => {
+      if (err) { failWith(err); return }
+      log(`UDP socket abierto`)
 
-      // Keepalive cada 3s — mantiene el stream de tally activo
-      rgbPingInterval = setInterval(() => {
-        if (rgbSocket) {
-          rgbSocket.send(RGBLINK_HANDSHAKE, 0, RGBLINK_HANDSHAKE.length, port, host, () => {})
-        }
-      }, 3000)
+      // Handshake: comando de conexión 68/66/01
+      const connectCmd = rgblinkCommand('68', '66', '01', '00', '00')
+      rgblinkSend(host, port, connectCmd)
+      log(`Handshake → ${connectCmd}`)
     })
   })
 }
 
-function rgblinkDisconnect() {
-  if (rgbPingInterval) { clearInterval(rgbPingInterval); rgbPingInterval = null }
-  if (rgbSocket) { try { rgbSocket.close() } catch {}; rgbSocket = null }
-}
-
-function _initRgblinkScenes() {
+function _initRgblinkScenes(host, port) {
   state.scenes = Array.from({ length: RGBLINK_INPUTS }, (_, i) => ({
     sceneName:   `input_${i + 1}`,
     displayName: `Input ${i + 1}`
@@ -175,66 +189,91 @@ function _initRgblinkScenes() {
   // Auto-map input N → cam N si no hay mapping previo
   let autoMapped = 0
   state.scenes.forEach((s, i) => {
-    const cam = i + 1
     if (!state.mapping[s.sceneName]) {
-      state.mapping[s.sceneName] = cam
+      state.mapping[s.sceneName] = i + 1
       autoMapped++
     }
   })
   if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
   sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+
+  // Polling: solicitar estado de tally cada segundo
+  // Comando F1/40/01 = pide el status especial de 22 bytes
+  rgbPollingTimer = setInterval(() => {
+    if (!rgbSocket || !state.connected) return
+    const pollCmd = rgblinkCommand('F1', '40', '01', '00', '00')
+    rgblinkSend(host, port, pollCmd)
+  }, 1000)
 }
 
-function handleRGBlinkPacket(buf) {
-  if (buf.length < 3) return  // Paquete mínimo para leer PGM/PVW
+function rgblinkDisconnect() {
+  if (rgbPollingTimer) { clearInterval(rgbPollingTimer); rgbPollingTimer = null }
+  if (rgbSocket) {
+    try { rgbSocket.close() } catch {}
+    rgbSocket = null
+  }
+}
 
-  // Validar checksum si el paquete tiene 22 bytes
-  if (buf.length === 22) {
-    const expected = buf[buf.length - 1]
-    let sum = 0
-    for (let i = 0; i < buf.length - 1; i++) sum += buf[i]
-    if ((sum % 256) !== expected) {
-      log('Paquete RGBlink con checksum inválido — ignorado', 'warn')
-      return
+function handleRGBlinkMessage(buf) {
+  // Paquete estándar de 19 chars: "<F...>" ASCII
+  if (buf.length === 19) {
+    const str = buf.toString('utf8').toUpperCase()
+    if (str[0] === '<' && str[1] === 'F' && str[18] === '>') {
+      const CMD = str.substr(6, 2)
+      const DAT1 = str.substr(8, 2)
+      const DAT2 = str.substr(10, 2)
+      // Respuesta al handshake (68 66 01)
+      if (CMD === '68' && DAT1 === '66' && DAT2 === '01') {
+        log('RGBlink: dispositivo conectado ✓', 'success')
+      }
     }
+    return
   }
 
-  // byte[0] = PVW input (1-indexed, 0 = ninguno)
-  // byte[2] = PGM input (1-indexed, 0 = ninguno)
-  const pvwInput = buf[0]
-  const pgmInput = buf[2]
+  // Paquete de tally de 22 bytes (binario)
+  if (buf.length === 22) {
+    // byte[0] = PST/Preview input (0-indexed: 0=Input1, 1=Input2…)
+    // byte[2] = PGM/Live input (0-indexed)
+    const pvwRaw = buf[0]
+    const pgmRaw = buf[2]
 
-  const pgmKey = pgmInput > 0 ? `input_${pgmInput}` : null
-  const pvwKey = pvwInput > 0 ? `input_${pvwInput}` : null
+    // 0-indexed → 1-indexed, verificar rango válido (0-3 para mini con 4 inputs)
+    const pgmInput = (pgmRaw >= 0 && pgmRaw <= 3) ? pgmRaw + 1 : 0
+    const pvwInput = (pvwRaw >= 0 && pvwRaw <= 3) ? pvwRaw + 1 : 0
 
-  log(`RGBlink tally → PGM: ${pgmInput ? 'Input '+pgmInput : '--'}  PVW: ${pvwInput ? 'Input '+pvwInput : '--'}`)
+    const pgmKey = pgmInput > 0 ? `input_${pgmInput}` : null
+    const pvwKey = pvwInput > 0 ? `input_${pvwInput}` : null
 
-  const prevPgm = state.pgmScene
-  const prevPvw = state.pvwScene
+    log(`RGBlink tally → PGM: ${pgmInput ? 'Input '+pgmInput : '--'}  PST: ${pvwInput ? 'Input '+pvwInput : '--'}`)
 
-  // Clear PGM anterior si cambió y no está en PVW
-  if (prevPgm && prevPgm !== pgmKey) {
-    const prevCam = state.mapping[prevPgm] || 0
-    const pvwCam  = state.mapping[pvwKey]  || 0
-    if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
+    const prevPgm = state.pgmScene
+    const prevPvw = state.pvwScene
+
+    if (prevPgm && prevPgm !== pgmKey) {
+      const prevCam = state.mapping[prevPgm] || 0
+      const pvwCam  = state.mapping[pvwKey]  || 0
+      if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
+    }
+    if (prevPvw && prevPvw !== pvwKey && prevPvw !== pgmKey) {
+      const prevCam = state.mapping[prevPvw] || 0
+      const pgmCam  = state.mapping[pgmKey]  || 0
+      if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
+    }
+
+    state.pgmScene = pgmKey
+    state.pvwScene = pvwKey
+
+    const pgmCam = pgmKey ? (state.mapping[pgmKey] || 0) : 0
+    const pvwCam = pvwKey ? (state.mapping[pvwKey] || 0) : 0
+
+    if (pgmCam) sendTallyDirect(pgmCam, 'program')
+    if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
+
+    sse('status', statusPayload())
+    return
   }
-  // Clear PVW anterior si cambió y no está en PGM
-  if (prevPvw && prevPvw !== pvwKey && prevPvw !== pgmKey) {
-    const prevCam = state.mapping[prevPvw] || 0
-    const pgmCam  = state.mapping[pgmKey]  || 0
-    if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
-  }
 
-  state.pgmScene = pgmKey
-  state.pvwScene = pvwKey
-
-  const pgmCam = pgmKey ? (state.mapping[pgmKey] || 0) : 0
-  const pvwCam = pvwKey ? (state.mapping[pvwKey] || 0) : 0
-
-  if (pgmCam) sendTallyDirect(pgmCam, 'program')
-  if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
-
-  sse('status', statusPayload())
+  log(`RGBlink: paquete de longitud inesperada (${buf.length} bytes) — ignorado`, 'warn')
 }
 
 // ── Auto-reconnect OBS ─────────────────────────────────────────
