@@ -24,7 +24,7 @@ jobs:
         run: npm ci
 
       - name: Build Windows
-        run: npm run build:win
+        run: npm run build:win -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -54,7 +54,7 @@ jobs:
         run: npm ci
 
       - name: Build Mac (universal)
-        run: npm run build:mac
+        run: npm run build:mac -- --publish never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
