@@ -5,25 +5,25 @@
   "author": "Noctavox Films",
   "main": "electron-main.js",
   "scripts": {
-    "start":     "node bridge.js",
-    "electron":  "electron .",
+    "start": "node bridge.js",
+    "electron": "electron .",
     "build:mac": "electron-builder --mac",
     "build:win": "electron-builder --win",
     "build:all": "electron-builder --mac --win",
-    "dev":       "NODE_ENV=development electron ."
+    "dev": "NODE_ENV=development electron ."
   },
   "dependencies": {
     "express": "^4.18.0",
-    "ws":      "^8.17.0"
+    "ws": "^8.17.0"
   },
   "devDependencies": {
-    "electron":         "^29.0.0",
+    "electron": "^29.0.0",
     "electron-builder": "^24.0.0"
   },
   "build": {
-    "appId":       "com.tallycomm.tallybridge",
+    "appId": "com.tallycomm.tallybridge",
     "productName": "TallyBridge",
-    "copyright":   "Copyright © 2025 Noctavox Films",
+    "copyright": "Copyright © 2025 Noctavox Films",
     "files": [
       "electron-main.js",
       "bridge.js",
@@ -34,24 +34,46 @@
     ],
     "mac": {
       "category": "public.app-category.video",
-      "icon":     "icon.icns",
+      "icon": "icon.icns",
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "darkModeSupport": true
     },
     "win": {
-      "icon":   "icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ]
     },
     "dmg": {
       "title": "Instala TallyBridge",
-      "window": { "width": 540, "height": 380 },
+      "window": {
+        "width": 540,
+        "height": 380
+      },
       "contents": [
-        { "x": 150, "y": 185, "type": "file" },
-        { "x": 390, "y": 185, "type": "link", "path": "/Applications" }
+        {
+          "x": 150,
+          "y": 185,
+          "type": "file"
+        },
+        {
+          "x": 390,
+          "y": 185,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     },
     "nsis": {
