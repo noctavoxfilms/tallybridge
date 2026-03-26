@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TallyBridge</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#0d0d0d;--s1:#181818;--s2:#222;--s3:#2a2a2a;
+  --b1:#333;--b2:#444;--b3:#555;
+  --red:#ff3b3b;--red2:#cc2222;--red-bg:#1e0808;
+  --grn:#2dd464;--grn-bg:#081e10;
+  --ylw:#ffc400;--ylw-bg:#1e1600;
+  --blu:#3d9eff;--blu-bg:#071520;
+  --pur:#a855f7;
+  --txt:#fff;--txt2:#bbb;--txt3:#777;--txt4:#444;
+  --mono:'Share Tech Mono',monospace;
+  --sans:'Barlow Condensed',sans-serif;
+  --radius:3px;
+}
+
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sans);}
+
+/* ── TOPBAR ── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 20px;height:52px;
+  background:var(--s1);border-bottom:1px solid var(--b1);
+  position:sticky;top:0;z-index:100;
+  -webkit-app-region:drag;
+  -webkit-user-select:none;
+}
+.topbar *{-webkit-app-region:no-drag;}
+.brand{display:flex;align-items:center;gap:10px;}
+.brand-dot{
+  width:8px;height:8px;border-radius:50%;
+  background:var(--red);
+  box-shadow:0 0 8px var(--red);
+  animation:blink 2s infinite;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.brand-name{font-size:18px;font-weight:900;letter-spacing:.2em;}
+.brand-name em{color:var(--red);font-style:normal;}
+.brand-ver{font-family:var(--mono);font-size:8px;color:var(--txt4);margin-top:1px;}
+.status-chip{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 12px;border-radius:20px;
+  font-family:var(--mono);font-size:9px;letter-spacing:.08em;
+  border:1px solid var(--b2);background:var(--s2);color:var(--txt3);
+  transition:all .2s;
+}
+.status-chip.connecting{border-color:var(--ylw);color:var(--ylw);background:var(--ylw-bg);}
+.status-chip.connected{border-color:var(--grn);color:var(--grn);background:var(--grn-bg);}
+.status-chip.error{border-color:var(--red);color:var(--red);background:var(--red-bg);}
+.status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
+
+/* ── LAYOUT ── */
+.layout{display:flex;height:calc(100vh - 52px);}
+.main{flex:1;overflow-y:auto;padding:0;}
+.sidebar{
+  width:280px;flex-shrink:0;
+  border-left:1px solid var(--b1);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+}
+
+/* ── CONNECT PANEL ── */
+.connect-wrap{
+  max-width:520px;margin:40px auto;padding:0 20px;
+}
+.connect-header{margin-bottom:28px;}
+.connect-eyebrow{
+  font-family:var(--mono);font-size:9px;letter-spacing:.2em;
+  color:var(--red);margin-bottom:8px;
+  display:flex;align-items:center;gap:8px;
+}
+.connect-eyebrow::before{content:'';width:20px;height:1px;background:var(--red);}
+.connect-title{font-size:32px;font-weight:900;line-height:1.1;margin-bottom:8px;}
+.connect-sub{font-family:var(--mono);font-size:10px;color:var(--txt3);line-height:1.7;}
+
+.form-card{
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);
+  padding:20px;margin-bottom:14px;
+}
+.form-section-label{
+  font-family:var(--mono);font-size:8px;letter-spacing:.15em;
+  color:var(--txt4);margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;
+}
+.form-section-label::after{content:'';flex:1;height:1px;background:var(--b1);}
+
+.field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
+.field:last-child{margin-bottom:0;}
+.field-label{font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:var(--txt3);}
+.field-row{display:flex;gap:8px;}
+.field-row .input{flex:1;}
+
+input.input,select.input{
+  background:var(--bg);border:1px solid var(--b2);border-radius:var(--radius);
+  padding:9px 12px;color:var(--txt);font-family:var(--mono);font-size:12px;
+  outline:none;width:100%;transition:border-color .12s;
+  -webkit-user-select:text;user-select:text;
+}
+input.input:focus,select.input:focus{border-color:rgba(61,158,255,.5);}
+input.input::placeholder{color:var(--txt4);}
+select.input{
+  -webkit-appearance:none;appearance:none;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,.3)'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;
+}
+select.input option{background:#1a1a1a;}
+
+.switch-row{display:flex;gap:6px;flex-wrap:wrap;}
+.switch-opt{
+  flex:1;min-width:80px;padding:10px 8px;
+  background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);
+  cursor:pointer;text-align:center;transition:all .12s;
+}
+.switch-opt.active{background:var(--blu-bg);border-color:var(--blu);}
+.switch-opt-icon{font-size:18px;display:block;margin-bottom:3px;}
+.switch-opt-name{font-family:var(--sans);font-size:12px;font-weight:700;color:var(--txt2);}
+.switch-opt.active .switch-opt-name{color:var(--txt);}
+.switch-opt-badge{font-family:var(--mono);font-size:7px;color:var(--txt4);}
+.switch-opt.active .switch-opt-badge{color:var(--blu);}
+.switch-opt.soon .switch-opt-name{color:var(--txt4);}
+.switch-opt.soon{cursor:not-allowed;opacity:.5;}
+
+.connect-btn{
+  width:100%;padding:14px;
+  background:var(--red);border:none;border-radius:var(--radius);
+  color:#fff;font-family:var(--sans);font-size:17px;font-weight:700;
+  letter-spacing:.12em;cursor:pointer;
+  transition:opacity .15s;
+  margin-top:4px;
+}
+.connect-btn:hover{opacity:.88;}
+.connect-btn:active{opacity:.7;}
+.connect-btn:disabled{opacity:.35;cursor:not-allowed;}
+
+.error-msg{
+  background:var(--red-bg);border:1px solid var(--red);
+  border-radius:var(--radius);padding:10px 14px;
+  font-family:var(--mono);font-size:10px;color:var(--red);
+  line-height:1.6;margin-top:12px;
+}
+
+/* ── CONNECTED MAIN ── */
+.connected-wrap{padding:20px;}
+
+.tally-monitor{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;
+  margin-bottom:20px;
+}
+.tally-card{
+  background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);
+  padding:14px 16px;transition:all .2s;
+}
+.tally-card.pgm-active{border-color:var(--red);background:var(--red-bg);}
+.tally-card.pvw-active{border-color:var(--ylw);background:var(--ylw-bg);}
+.tally-card-bus{font-family:var(--mono);font-size:8px;letter-spacing:.15em;color:var(--txt4);margin-bottom:6px;}
+.tally-card.pgm-active .tally-card-bus{color:var(--red);}
+.tally-card.pvw-active .tally-card-bus{color:var(--ylw);}
+.tally-card-cam{font-family:var(--sans);font-size:36px;font-weight:900;color:var(--txt3);line-height:1;}
+.tally-card.pgm-active .tally-card-cam{color:var(--red);text-shadow:0 0 20px rgba(255,59,59,.4);}
+.tally-card.pvw-active .tally-card-cam{color:var(--ylw);text-shadow:0 0 20px rgba(255,196,0,.3);}
+.tally-card-scene{font-family:var(--mono);font-size:8px;color:var(--txt3);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ── SCENE MAPPING ── */
+.section-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:10px;
+}
+.section-title{font-size:14px;font-weight:700;color:var(--txt2);}
+.section-hint{font-family:var(--mono);font-size:8px;color:var(--txt4);}
+.auto-btn{
+  padding:5px 12px;background:var(--s2);border:1px solid var(--b1);
+  border-radius:var(--radius);color:var(--txt3);font-family:var(--mono);
+  font-size:8px;cursor:pointer;letter-spacing:.08em;
+  transition:all .12s;
+}
+.auto-btn:hover{border-color:var(--b3);color:var(--txt2);}
+
+.scene-table{width:100%;border-collapse:collapse;}
+.scene-table th{
+  font-family:var(--mono);font-size:8px;letter-spacing:.1em;color:var(--txt4);
+  padding:6px 10px;text-align:left;border-bottom:1px solid var(--b1);
+  font-weight:normal;
+}
+.scene-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.04);}
+.scene-row:last-child td{border-bottom:none;}
+.scene-row.pgm-row td{background:rgba(255,59,59,.06);}
+.scene-row.pvw-row td{background:rgba(255,196,0,.04);}
+
+.scene-name-cell{
+  font-family:var(--mono);font-size:10px;color:var(--txt2);
+  padding:8px 10px;max-width:180px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.scene-badge{
+  display:inline-block;font-size:7px;letter-spacing:.06em;
+  padding:1px 5px;border-radius:1px;margin-left:6px;vertical-align:middle;
+}
+.badge-pgm{background:var(--red);color:#fff;}
+.badge-pvw{background:var(--ylw);color:#111;}
+
+.cam-select{
+  background:var(--s2);border:1px solid var(--b1);border-radius:2px;
+  padding:5px 8px;color:var(--txt2);font-family:var(--mono);font-size:10px;
+  outline:none;cursor:pointer;
+  -webkit-appearance:none;appearance:none;min-width:90px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='rgba(255,255,255,.25)'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;padding-right:22px;
+  transition:border-color .1s;
+}
+.cam-select:focus{border-color:rgba(61,158,255,.4);}
+.cam-select.assigned{border-color:rgba(61,158,255,.4);color:var(--blu);}
+.cam-select option{background:#1e1e1e;}
+
+/* disconnect btn */
+.disconnect-btn{
+  padding:7px 14px;background:var(--s2);border:1px solid var(--b1);
+  border-radius:var(--radius);color:var(--txt3);font-family:var(--mono);
+  font-size:9px;cursor:pointer;letter-spacing:.08em;transition:all .12s;
+}
+.disconnect-btn:hover{border-color:var(--red);color:var(--red);}
+
+/* ── SIDEBAR: LOG ── */
+.sidebar-header{
+  padding:12px 14px;border-bottom:1px solid var(--b1);
+  font-family:var(--mono);font-size:9px;letter-spacing:.12em;color:var(--txt4);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
+}
+.clear-log{
+  padding:3px 8px;background:var(--s2);border:1px solid var(--b1);
+  border-radius:2px;color:var(--txt4);font-family:var(--mono);font-size:7px;
+  cursor:pointer;transition:all .1s;
+}
+.clear-log:hover{color:var(--txt3);}
+.log-scroll{flex:1;overflow-y:auto;padding:8px;}
+.log-entry{
+  display:flex;gap:6px;padding:3px 6px;border-radius:2px;
+  font-family:var(--mono);font-size:9px;margin-bottom:2px;align-items:flex-start;
+}
+.log-entry.info{color:var(--txt3);}
+.log-entry.success{color:var(--grn);}
+.log-entry.warn{color:var(--ylw);}
+.log-entry.error{color:var(--red);background:rgba(255,59,59,.06);}
+.log-ts{color:var(--txt4);flex-shrink:0;font-size:8px;margin-top:1px;}
+.log-icon{flex-shrink:0;}
+.log-msg{line-height:1.4;word-break:break-all;}
+
+/* ── TEST PANEL ── */
+.test-panel{
+  border-top:1px solid var(--b1);padding:12px 14px;flex-shrink:0;
+}
+.test-label{font-family:var(--mono);font-size:8px;letter-spacing:.1em;color:var(--txt4);margin-bottom:8px;}
+.test-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+.test-btn{
+  padding:7px;background:var(--s2);border:1px solid var(--b1);
+  border-radius:2px;color:var(--txt3);font-family:var(--mono);font-size:8px;
+  cursor:pointer;transition:all .1s;text-align:center;letter-spacing:.06em;
+}
+.test-btn:hover{border-color:var(--b3);color:var(--txt2);}
+.test-btn.pgm:hover{border-color:var(--red);color:var(--red);}
+.test-btn.pvw:hover{border-color:var(--ylw);color:var(--ylw);}
+.test-btn.clr:hover{border-color:var(--blu);color:var(--blu);}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:700px){
+  .layout{flex-direction:column;}
+  .sidebar{width:100%;border-left:none;border-top:1px solid var(--b1);height:220px;}
+  .tally-monitor{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-dot" id="brand-dot"></div>
+    <div>
+      <div class="brand-name">TALLY<em>BRIDGE</em></div>
+      <div class="brand-ver">v1.0 — TallyComm</div>
+    </div>
+  </div>
+  <div class="status-chip" id="status-chip">
+    <div class="status-dot"></div>
+    <span id="status-text">DESCONECTADO</span>
+  </div>
+</div>
+
+<div class="layout">
+  <!-- MAIN CONTENT -->
+  <div class="main" id="main-area">
+    <!-- Se llena dinámicamente -->
+  </div>
+
+  <!-- SIDEBAR: LOG -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <span>LOG DE ACTIVIDAD</span>
+      <button class="clear-log" onclick="clearLog()">LIMPIAR</button>
+    </div>
+    <div class="log-scroll" id="log-scroll">
+      <div class="log-entry info">
+        <span class="log-ts">--:--:--</span>
+        <span class="log-msg">TallyBridge iniciado. Configura la conexión para comenzar.</span>
+      </div>
+    </div>
+    <div class="test-panel" id="test-panel" style="display:none;">
+      <div class="test-label">TEST MANUAL</div>
+      <div class="test-grid" id="test-grid">
+        <!-- filled dynamically -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── ESTADO UI ────────────────────────────────────────────────
+const ui = {
+  connected:  false,
+  connecting: false,
+  pgmScene:   null,
+  pvwScene:   null,
+  pgmCam:     0,
+  pvwCam:     0,
+  scenes:     [],
+  mapping:    {},
+  selectedSwitcher: 'obs'
+}
+
+// ── SSE ──────────────────────────────────────────────────────
+const es = new EventSource('/events')
+es.addEventListener('status',  e => { onStatus(JSON.parse(e.data))  })
+es.addEventListener('scenes',  e => { onScenes(JSON.parse(e.data))  })
+es.addEventListener('log',     e => { addLog(JSON.parse(e.data))    })
+es.addEventListener('tally',   e => { onTally(JSON.parse(e.data))   })
+
+function onStatus(d) {
+  ui.connected  = d.connected
+  ui.connecting = d.connecting
+  ui.pgmScene   = d.pgmScene
+  ui.pvwScene   = d.pvwScene
+  ui.pgmCam     = d.pgmCam || 0
+  ui.pvwCam     = d.pvwCam || 0
+
+  // Pre-fill saved config into ui state (only first time)
+  if (d.savedConfig && !ui._configLoaded) {
+    ui._configLoaded = true
+    if (d.savedConfig.obsHost)   ui.savedHost    = d.savedConfig.obsHost
+    if (d.savedConfig.obsPort)   ui.savedPort    = d.savedConfig.obsPort
+    if (d.savedConfig.tallyUrl)  ui.savedUrl     = d.savedConfig.tallyUrl
+    if (d.savedConfig.tallyRoom) ui.savedRoom    = d.savedConfig.tallyRoom
+    if (d.savedConfig.switcher)  ui.selectedSwitcher = d.savedConfig.switcher
+    window._lastConfig = d.savedConfig
+  }
+
+  const chip = document.getElementById('status-chip')
+  const text = document.getElementById('status-text')
+  const dot  = document.getElementById('brand-dot')
+
+  chip.className = 'status-chip ' + (d.connected ? 'connected' : d.connecting ? 'connecting' : d.error ? 'error' : '')
+  text.textContent = d.connected ? 'CONECTADO' : d.connecting ? 'CONECTANDO…' : d.error ? 'ERROR' : 'DESCONECTADO'
+  dot.style.background = d.connected ? 'var(--grn)' : d.connecting ? 'var(--ylw)' : 'var(--red)'
+  dot.style.boxShadow  = d.connected ? '0 0 8px var(--grn)' : d.connecting ? '0 0 8px var(--ylw)' : '0 0 8px var(--red)'
+
+  if (d.connected) renderConnected()
+  else             renderConnect(d.error)
+
+  if (d.error && !d.connecting) addLog({ msg: d.error, type: 'error', ts: Date.now() })
+}
+
+function onScenes(d) {
+  ui.scenes  = d.scenes  || []
+  ui.mapping = d.mapping || {}
+  if (ui.connected) renderSceneTable()
+}
+
+function onTally(d) {
+  // flash tally cards
+  if (d.bus === 'program') flashCard('pgm')
+  if (d.bus === 'preview') flashCard('pvw')
+}
+
+// ── RENDER: CONNECT FORM ─────────────────────────────────────
+function renderConnect(error) {
+  const ma = document.getElementById('main-area')
+  ma.innerHTML = `
+  <div class="connect-wrap">
+    <div class="connect-header">
+      <div class="connect-eyebrow">CONFIGURACION</div>
+      <div class="connect-title">Conecta tu<br>switcher</div>
+      <p class="connect-sub">TallyBridge corre localmente en tu laptop y envia<br>el tally en tiempo real a TallyComm.</p>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-label">SWITCHER</div>
+      <div class="switch-row">
+        <div class="switch-opt ${ui.selectedSwitcher==='obs'?'active':''}" onclick="selectSwitcher('obs')">
+          <span class="switch-opt-icon">🎬</span>
+          <div class="switch-opt-name">OBS</div>
+          <div class="switch-opt-badge">WebSocket v5</div>
+        </div>
+        <div class="switch-opt soon" title="Próximamente">
+          <span class="switch-opt-icon">📺</span>
+          <div class="switch-opt-name">ATEM</div>
+          <div class="switch-opt-badge">Próximamente</div>
+        </div>
+        <div class="switch-opt soon" title="Próximamente">
+          <span class="switch-opt-icon">🎛</span>
+          <div class="switch-opt-name">vMix</div>
+          <div class="switch-opt-badge">Próximamente</div>
+        </div>
+        <div class="switch-opt soon" title="Próximamente">
+          <span class="switch-opt-icon">🔴</span>
+          <div class="switch-opt-name">RGBlink</div>
+          <div class="switch-opt-badge">Próximamente</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-card" id="switcher-fields">
+      <div class="form-section-label">OBS STUDIO</div>
+      <div class="field">
+        <span class="field-label">HOST / IP</span>
+        <div class="field-row">
+          <input class="input" type="text" id="obsHost" value="${ui.savedHost||'127.0.0.1'}" placeholder="127.0.0.1">
+          <input class="input" type="number" id="obsPort" value="${ui.savedPort||4455}" placeholder="4455" style="max-width:90px;">
+        </div>
+        <span style="font-family:var(--mono);font-size:8px;color:var(--txt4);">127.0.0.1 si OBS corre en esta misma computadora</span>
+      </div>
+      <div class="field">
+        <span class="field-label">PASSWORD (si tiene)</span>
+        <input class="input" type="password" id="obsPassword" placeholder="Dejar vacío si no tiene contraseña">
+        <span style="font-family:var(--mono);font-size:8px;color:var(--txt4);">Ver en OBS: Tools → WebSocket Server Settings</span>
+      </div>
+    </div>
+
+    <div class="form-card">
+      <div class="form-section-label">TALLYCOMM</div>
+      <div class="field">
+        <span class="field-label">NOMBRE DE SALA</span>
+        <input class="input" type="text" id="tallyRoom" placeholder="ej: show-enero-2026" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <span style="font-family:var(--mono);font-size:8px;color:var(--txt4);">El mismo nombre que usan los camarógrafos al entrar</span>
+      </div>
+      <div class="field">
+        <span class="field-label">URL DEL SERVIDOR</span>
+        <input class="input" type="text" id="tallyUrl" value="https://tallycomm.com" placeholder="https://tallycomm.com">
+      </div>
+    </div>
+
+    ${error ? `<div class="error-msg">⚠ ${error}</div>` : ''}
+
+    <button class="connect-btn" id="connect-btn" onclick="doConnect()">CONECTAR</button>
+  </div>`
+
+  document.getElementById('test-panel').style.display = 'none'
+}
+
+function selectSwitcher(sw) {
+  ui.selectedSwitcher = sw
+  document.querySelectorAll('.switch-opt:not(.soon)').forEach(el => {
+    el.classList.toggle('active', el.onclick?.toString().includes(`'${sw}'`))
+  })
+}
+
+// ── RENDER: CONNECTED ────────────────────────────────────────
+function renderConnected() {
+  const ma = document.getElementById('main-area')
+  if (!document.getElementById('connected-content')) {
+    ma.innerHTML = `
+    <div class="connected-wrap" id="connected-content">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div>
+          <div style="font-family:var(--mono);font-size:8px;letter-spacing:.12em;color:var(--grn);margin-bottom:3px;">● CONECTADO A OBS</div>
+          <div style="font-family:var(--sans);font-size:20px;font-weight:700;" id="conn-room-label">Sala: —</div>
+        </div>
+        <button class="disconnect-btn" onclick="doDisconnect()">DESCONECTAR</button>
+      </div>
+
+      <div class="tally-monitor">
+        <div class="tally-card" id="pgm-card">
+          <div class="tally-card-bus">PROGRAM</div>
+          <div class="tally-card-cam" id="pgm-cam">—</div>
+          <div class="tally-card-scene" id="pgm-scene">Sin escena</div>
+        </div>
+        <div class="tally-card" id="pvw-card">
+          <div class="tally-card-bus">PREVIEW</div>
+          <div class="tally-card-cam" id="pvw-cam">—</div>
+          <div class="tally-card-scene" id="pvw-scene">Sin escena</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <div>
+          <div class="section-title">MAPEO DE ESCENAS → CÁMARAS</div>
+          <div class="section-hint">Asigna cada escena de OBS a una cámara de TallyComm</div>
+        </div>
+        <button class="auto-btn" onclick="autoDetect()">AUTO-DETECTAR</button>
+      </div>
+
+      <table class="scene-table">
+        <thead><tr>
+          <th>ESCENA OBS</th>
+          <th>CÁMARA TALLYCOMM</th>
+        </tr></thead>
+        <tbody id="scene-tbody"></tbody>
+      </table>
+    </div>`
+  }
+
+  // Actualizar room label
+  const roomEl = document.getElementById('conn-room-label')
+  if (roomEl) {
+    const cfg = window._lastConfig || {}
+    roomEl.textContent = 'Sala: ' + (cfg.tallyRoom || '—')
+  }
+
+  updateTallyCards()
+  renderSceneTable()
+  renderTestPanel()
+  document.getElementById('test-panel').style.display = 'block'
+}
+
+function updateTallyCards() {
+  const pgmCard  = document.getElementById('pgm-card')
+  const pvwCard  = document.getElementById('pvw-card')
+  const pgmCamEl = document.getElementById('pgm-cam')
+  const pvwCamEl = document.getElementById('pvw-cam')
+  const pgmSc    = document.getElementById('pgm-scene')
+  const pvwSc    = document.getElementById('pvw-scene')
+  if (!pgmCard) return
+
+  pgmCard.className = 'tally-card' + (ui.pgmCam ? ' pgm-active' : '')
+  pvwCard.className = 'tally-card' + (ui.pvwCam ? ' pvw-active' : '')
+  pgmCamEl.textContent = ui.pgmCam ? 'CAM ' + ui.pgmCam : '—'
+  pvwCamEl.textContent = ui.pvwCam ? 'CAM ' + ui.pvwCam : '—'
+  pgmSc.textContent    = ui.pgmScene || 'Sin escena'
+  pvwSc.textContent    = ui.pvwScene || 'Sin escena'
+}
+
+function renderSceneTable() {
+  const tbody = document.getElementById('scene-tbody')
+  if (!tbody) return
+
+  if (ui.scenes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;font-family:var(--mono);font-size:9px;color:var(--txt4);text-align:center;">Sin escenas — asegúrate de tener al menos una escena en OBS</td></tr>'
+    return
+  }
+
+  tbody.innerHTML = ui.scenes.map(s => {
+    const name  = s.sceneName
+    const cam   = ui.mapping[name] || 0
+    const isPgm = name === ui.pgmScene
+    const isPvw = name === ui.pvwScene
+    const rowCls = isPgm ? ' pgm-row' : isPvw ? ' pvw-row' : ''
+    const badge  = isPgm ? '<span class="scene-badge badge-pgm">PGM</span>' :
+                   isPvw ? '<span class="scene-badge badge-pvw">PVW</span>' : ''
+
+    const opts = '<option value="0"' + (!cam ? ' selected' : '') + '>— Ignorar</option>' +
+      [1,2,3,4,5,6].map(n => `<option value="${n}"${cam===n?' selected':''}>CAM ${n}</option>`).join('')
+
+    return `<tr class="scene-row${rowCls}" data-scene="${esc(name)}">
+      <td class="scene-name-cell">${esc(name)}${badge}</td>
+      <td style="padding:4px 6px;">
+        <select class="cam-select${cam?' assigned':''}" onchange="setMapping('${esc(name)}', this.value); this.className='cam-select'+(this.value!='0'?' assigned':'')">
+          ${opts}
+        </select>
+      </td>
+    </tr>`
+  }).join('')
+
+  updateTallyCards()
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
+}
+
+function renderTestPanel() {
+  const tg = document.getElementById('test-grid')
+  if (!tg) return
+  const activeCams = [...new Set(Object.values(ui.mapping).map(Number).filter(Boolean))].sort()
+  if (!activeCams.length) {
+    tg.innerHTML = '<div style="font-family:var(--mono);font-size:8px;color:var(--txt4);grid-column:span 2;">Asigna cámaras para probar</div>'
+    return
+  }
+  const cam = activeCams[0]
+  tg.innerHTML = `
+    <button class="test-btn pgm" onclick="testTally(${cam},'program')">CAM ${cam} PGM</button>
+    <button class="test-btn pvw" onclick="testTally(${cam},'preview')">CAM ${cam} PVW</button>
+    <button class="test-btn clr" onclick="testTally(${cam},'clear')" style="grid-column:span 2;">CAM ${cam} CLEAR</button>
+  `
+}
+
+// ── FLASH ANIMATION ──────────────────────────────────────────
+function flashCard(type) {
+  const el = document.getElementById(type + '-card')
+  if (!el) return
+  el.style.transition = 'none'
+  el.style.opacity = '0.5'
+  setTimeout(() => { el.style.transition = 'all .2s'; el.style.opacity = '' }, 80)
+}
+
+// ── ACCIONES ─────────────────────────────────────────────────
+async function doConnect() {
+  const btn = document.getElementById('connect-btn')
+  if (btn) { btn.disabled = true; btn.textContent = 'CONECTANDO…' }
+
+  const cfg = {
+    switcher:    ui.selectedSwitcher,
+    obsHost:     document.getElementById('obsHost')?.value.trim()     || '127.0.0.1',
+    obsPort:     document.getElementById('obsPort')?.value            || '4455',
+    obsPassword: document.getElementById('obsPassword')?.value        || '',
+    tallyRoom:   document.getElementById('tallyRoom')?.value.trim()   || '',
+    tallyUrl:    document.getElementById('tallyUrl')?.value.trim()    || 'https://tallycomm.com'
+  }
+
+  if (!cfg.tallyRoom) {
+    addLog({ msg: 'Debes ingresar el nombre de sala', type: 'warn', ts: Date.now() })
+    if (btn) { btn.disabled = false; btn.textContent = 'CONECTAR' }
+    return
+  }
+
+  window._lastConfig = cfg
+
+  const res = await fetch('/api/connect', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(cfg)
+  }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }))
+
+  if (!res.ok && btn) {
+    btn.disabled = false
+    btn.textContent = 'CONECTAR'
+  }
+}
+
+async function doDisconnect() {
+  await fetch('/api/disconnect', { method: 'POST' })
+}
+
+async function setMapping(sceneName, cameraNumber) {
+  await fetch('/api/mapping', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ sceneName, cameraNumber: parseInt(cameraNumber) })
+  })
+}
+
+async function testTally(camera, bus) {
+  addLog({ msg: `Test → cam${camera} ${bus}`, type: 'info', ts: Date.now() })
+  await fetch('/api/test', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ camera, bus })
+  })
+}
+
+function autoDetect() {
+  let detected = 0
+  ui.scenes.forEach(s => {
+    const name = s.sceneName
+    const m = name.match(/(?:cam(?:era)?|cámara)[\s\-_#]*(\d+)/i)
+    if (m) {
+      const cam = parseInt(m[1])
+      if (cam >= 1 && cam <= 6) {
+        ui.mapping[name] = cam
+        setMapping(name, cam)
+        detected++
+      }
+    }
+  })
+  renderSceneTable()
+  addLog({
+    msg: detected ? `Auto-detectadas ${detected} escenas` : 'No se detectaron patrones (ej: "Camera 1", "CAM 2")',
+    type: detected ? 'success' : 'warn',
+    ts: Date.now()
+  })
+}
+
+// ── LOG ──────────────────────────────────────────────────────
+function addLog({ msg, type, ts }) {
+  const scroll = document.getElementById('log-scroll')
+  if (!scroll) return
+  const t = new Date(ts)
+  const time = t.toTimeString().split(' ')[0]
+  const icon = type === 'success' ? '✓' : type === 'error' ? '✗' : type === 'warn' ? '!' : '·'
+
+  const entry = document.createElement('div')
+  entry.className = `log-entry ${type}`
+  entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-icon">${icon}</span><span class="log-msg">${msg}</span>`
+  scroll.appendChild(entry)
+
+  // Máximo 200 entradas
+  while (scroll.children.length > 200) scroll.removeChild(scroll.firstChild)
+  scroll.scrollTop = scroll.scrollHeight
+}
+
+function clearLog() {
+  const scroll = document.getElementById('log-scroll')
+  if (scroll) scroll.innerHTML = ''
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+renderConnect(null)
+</script>
+</body>
+</html>

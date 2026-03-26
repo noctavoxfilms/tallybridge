@@ -1,0 +1,478 @@
+// ============================================================
+//  TallyBridge v1.0 — conecta OBS (y próximamente ATEM/vMix/RGBlink)
+//  a TallyComm sin instalar Companion ni TallyArbiter.
+//
+//  Uso:
+//    npm install
+//    node bridge.js
+//    Abre: http://localhost:4000
+// ============================================================
+
+'use strict'
+const express    = require('express')
+const WebSocket  = require('ws')
+const crypto     = require('crypto')
+const path       = require('path')
+const fs         = require('fs')
+const { execSync } = require('child_process')
+
+const app  = express()
+const PORT = 4000
+app.use(express.json())
+
+// Serve bridge-ui.html as root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'bridge-ui.html'))
+})
+
+// ── Persistencia ──────────────────────────────────────────────
+const SAVE_FILE = path.join(
+  process.env.APPDATA || process.env.HOME || __dirname,
+  process.versions.electron ? '.tallybridge' : '',
+  'tallybridge-config.json'
+)
+
+function loadSaved() {
+  try {
+    const dir = path.dirname(SAVE_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    if (fs.existsSync(SAVE_FILE)) {
+      const d = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'))
+      if (d.config)  Object.assign(state.config,  d.config)
+      if (d.mapping) Object.assign(state.mapping, d.mapping)
+      console.log('[INFO] Config cargada desde disco')
+    }
+  } catch (e) { console.log('[WARN] No se pudo cargar config:', e.message) }
+}
+
+function saveToDisk() {
+  try {
+    const dir = path.dirname(SAVE_FILE)
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(SAVE_FILE, JSON.stringify({
+      config:  { ...state.config, obsPassword: '' }, // no guardar contraseña
+      mapping: state.mapping
+    }, null, 2))
+  } catch (e) { console.log('[WARN] No se pudo guardar config:', e.message) }
+}
+
+// ── Estado global ────────────────────────────────────────────
+const state = {
+  connected:    false,
+  connecting:   false,
+  error:        null,
+  obsVersion:   null,
+  scenes:       [],          // [{ sceneName }]
+  pgmScene:     null,
+  pvwScene:     null,
+  config: {
+    obsHost:     '127.0.0.1',
+    obsPort:     4455,
+    obsPassword: '',
+    tallyUrl:    'https://tallycomm.com',
+    tallyRoom:   ''
+  },
+  mapping:      {}           // { 'Scene Name': cameraNumber (1-6) | 0=ignorar }
+}
+
+let obsSocket    = null
+let reqCounter   = 0
+const reqCbs     = {}
+const sseClients = []
+let reconnectTimer = null
+let manualDisconnect = false
+
+// ── Auto-reconnect ────────────────────────────────────────────
+function scheduleReconnect(delay = 4000) {
+  if (reconnectTimer) return
+  if (!state.config.tallyRoom) return // sin config no reconectar
+  log(`Reconectando en ${delay/1000}s…`, 'warn')
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null
+    if (state.connected || manualDisconnect) return
+    log('Intentando reconectar a OBS…')
+    try {
+      await obsConnect(state.config)
+    } catch (e) {
+      log('Reconexión fallida: ' + e.message, 'warn')
+      scheduleReconnect(Math.min(delay * 2, 30000)) // backoff hasta 30s
+    }
+  }, delay)
+}
+function sse(type, data) {
+  const msg = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`
+  for (let i = sseClients.length - 1; i >= 0; i--) {
+    try { sseClients[i].write(msg) }
+    catch { sseClients.splice(i, 1) }
+  }
+}
+
+function log(msg, type = 'info') {
+  const entry = { msg, type, ts: Date.now() }
+  console.log(`[${type.toUpperCase()}] ${msg}`)
+  sse('log', entry)
+}
+
+function statusPayload() {
+  return {
+    connected:  state.connected,
+    connecting: state.connecting,
+    error:      state.error,
+    obsVersion: state.obsVersion,
+    pgmScene:   state.pgmScene,
+    pvwScene:   state.pvwScene,
+    pgmCam:     state.mapping[state.pgmScene] || 0,
+    pvwCam:     state.mapping[state.pvwScene] || 0,
+    config:     state.config
+  }
+}
+
+// ── OBS WebSocket v5 (protocolo manual, sin dependencias extra) ─
+function obsConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error      = null
+    sse('status', statusPayload())
+
+    const url = `ws://${cfg.obsHost}:${cfg.obsPort}`
+    log(`Conectando a OBS en ${url}…`)
+
+    const ws    = new WebSocket(url)
+    obsSocket   = ws
+    let resolved = false
+
+    const failWith = (err) => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(connTimeout)
+      state.connecting = false
+      state.connected  = false
+      state.error      = err.message
+      obsSocket        = null
+      sse('status', statusPayload())
+      reject(err)
+    }
+
+    const connTimeout = setTimeout(
+      () => { ws.terminate(); failWith(new Error('Timeout al conectar a OBS (5s)')) },
+      5000
+    )
+
+    ws.on('error', err => failWith(err))
+
+    ws.on('close', () => {
+      if (!resolved) failWith(new Error('Conexión cerrada inesperadamente'))
+      else if (state.connected) {
+        state.connected = false
+        log('OBS desconectado', 'warn')
+        sse('status', statusPayload())
+        // Auto-reconectar si no fue manual
+        if (!manualDisconnect) scheduleReconnect()
+      }
+    })
+
+    ws.on('message', async raw => {
+      let msg
+      try { msg = JSON.parse(raw) } catch { return }
+      const { op, d } = msg
+
+      // Op 0 = Hello
+      if (op === 0) {
+        clearTimeout(connTimeout)
+        log(`OBS WebSocket v${d.obsWebSocketVersion || '?'} detectado`)
+
+        const identData = {
+          rpcVersion:        1,
+          eventSubscriptions: 4  // Scenes category → PGM/PVW/SceneList changes
+        }
+
+        if (d.authentication) {
+          if (!cfg.obsPassword) {
+            ws.terminate()
+            return failWith(new Error('OBS requiere contraseña — ingresa el password de WebSocket'))
+          }
+          const secret = crypto.createHash('sha256')
+            .update(cfg.obsPassword + d.authentication.salt).digest('base64')
+          identData.authentication = crypto.createHash('sha256')
+            .update(secret + d.authentication.challenge).digest('base64')
+        }
+
+        ws.send(JSON.stringify({ op: 1, d: identData }))
+        return
+      }
+
+      // Op 2 = Identified — conexión lista
+      if (op === 2) {
+        if (resolved) return
+        resolved         = true
+        state.connected  = true
+        state.connecting = false
+        state.obsVersion = d.negotiatedRpcVersion
+        log('Conectado a OBS ✓', 'success')
+        sse('status', statusPayload())
+
+        // Leer estado inicial
+        try {
+          const [sceneList, pgmRes, pvwRes] = await Promise.all([
+            obsCall('GetSceneList'),
+            obsCall('GetCurrentProgramScene'),
+            obsCall('GetCurrentPreviewScene').catch(() => ({ currentPreviewSceneName: null }))
+          ])
+
+          state.scenes   = [...(sceneList.scenes || [])].reverse() // OBS devuelve de atrás
+          state.pgmScene = pgmRes.currentProgramSceneName || null
+          state.pvwScene = pvwRes.currentPreviewSceneName || null
+
+          log(`${state.scenes.length} escenas detectadas`, 'success')
+          sse('scenes',  { scenes: state.scenes, mapping: state.mapping })
+          sse('status',  statusPayload())
+
+          // Enviar estado inicial a TallyComm
+          if (state.pgmScene) sendTally(state.pgmScene, 'program')
+          if (state.pvwScene && state.pvwScene !== state.pgmScene)
+            sendTally(state.pvwScene, 'preview')
+        } catch (e) {
+          log('Error leyendo estado inicial: ' + e.message, 'warn')
+        }
+
+        resolve()
+        return
+      }
+
+      // Op 5 = Event
+      if (op === 5) { handleEvent(d); return }
+
+      // Op 7 = RequestResponse
+      if (op === 7) {
+        const cb = reqCbs[d.requestId]
+        if (!cb) return
+        delete reqCbs[d.requestId]
+        if (d.requestStatus?.result) cb.resolve(d.responseData || {})
+        else cb.reject(new Error(d.requestStatus?.comment || 'OBS error'))
+      }
+    })
+  })
+}
+
+function obsCall(requestType, requestData = {}) {
+  return new Promise((resolve, reject) => {
+    if (!obsSocket || obsSocket.readyState !== WebSocket.OPEN)
+      return reject(new Error('No conectado a OBS'))
+    const requestId = `r${++reqCounter}`
+    reqCbs[requestId] = { resolve, reject }
+    obsSocket.send(JSON.stringify({ op: 6, d: { requestType, requestId, requestData } }))
+    setTimeout(() => {
+      if (!reqCbs[requestId]) return
+      delete reqCbs[requestId]
+      reject(new Error(`Timeout en ${requestType}`))
+    }, 5000)
+  })
+}
+
+// ── Manejo de eventos OBS ────────────────────────────────────
+function handleEvent({ eventType, eventData }) {
+  if (eventType === 'CurrentProgramSceneChanged') {
+    const prev = state.pgmScene
+    const next = eventData.sceneName
+    log(`PGM → "${next}"`)
+
+    // Clear la escena anterior si no sigue en PVW
+    const prevCam = state.mapping[prev] || 0
+    const pvwCam  = state.mapping[state.pvwScene] || 0
+    if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
+
+    state.pgmScene = next
+    const newCam = state.mapping[next] || 0
+    if (newCam) sendTallyDirect(newCam, 'program')
+
+    sse('status', statusPayload())
+
+    // En Studio Mode OBS no siempre emite CurrentPreviewSceneChanged
+    // después de una transición — la escena anterior de PGM pasa a PVW
+    // silenciosamente. Hacemos un poll para garantizar sincronía.
+    setTimeout(() => {
+      obsCall('GetCurrentPreviewScene')
+        .then(r => {
+          const pvw = r.currentPreviewSceneName || null
+          if (pvw && pvw !== state.pvwScene) {
+            log(`PVW sync → "${pvw}" (Studio Mode)`)
+            const oldPvwCam = state.mapping[state.pvwScene] || 0
+            const pgmCam2   = state.mapping[state.pgmScene] || 0
+            if (oldPvwCam && oldPvwCam !== pgmCam2) sendTallyDirect(oldPvwCam, 'clear')
+            state.pvwScene = pvw
+            const newPvwCam = state.mapping[pvw] || 0
+            if (newPvwCam && newPvwCam !== pgmCam2) sendTallyDirect(newPvwCam, 'preview')
+            sse('status', statusPayload())
+          }
+        })
+        .catch(() => {}) // No Studio Mode — ignorar
+    }, 120) // 120ms — suficiente para que OBS complete la transición
+  }
+
+  else if (eventType === 'CurrentPreviewSceneChanged') {
+    const prev = state.pvwScene
+    const next = eventData.sceneName
+    log(`PVW → "${next}"`)
+
+    const prevCam = state.mapping[prev] || 0
+    const pgmCam  = state.mapping[state.pgmScene] || 0
+    if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
+
+    state.pvwScene = next
+    const newCam = state.mapping[next] || 0
+    if (newCam) sendTallyDirect(newCam, 'preview')
+
+    sse('status', statusPayload())
+  }
+
+  else if (eventType === 'SceneListChanged') {
+    obsCall('GetSceneList').then(data => {
+      state.scenes = [...(data.scenes || [])].reverse()
+      log(`Lista de escenas actualizada (${state.scenes.length})`)
+      sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+    }).catch(() => {})
+  }
+}
+
+// ── Tally HTTP POST a TallyComm ──────────────────────────────
+function sendTally(sceneName, bus) {
+  const cam = state.mapping[sceneName] || 0
+  if (cam) sendTallyDirect(cam, bus)
+}
+
+async function sendTallyDirect(camera, bus) {
+  const room = state.config.tallyRoom?.trim()
+  if (!room) {
+    log('Sin sala configurada — tally ignorado', 'warn')
+    return
+  }
+
+  const body = { camera: parseInt(camera), bus, room }
+  const url  = `${state.config.tallyUrl.replace(/\/$/, '')}/api/tally`
+
+  try {
+    const res = await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+      signal:  AbortSignal.timeout(4000)
+    })
+    const ok = res.ok
+    log(`TALLY cam${camera} ${bus.toUpperCase()} → ${ok ? '✓ OK' : `Error HTTP ${res.status}`}`, ok ? 'success' : 'error')
+    sse('tally', { ...body, ok, status: res.status })
+  } catch (e) {
+    log(`TALLY cam${camera} ${bus.toUpperCase()} → ${e.message}`, 'error')
+    sse('tally', { ...body, ok: false, error: e.message })
+  }
+}
+
+// ── API REST ─────────────────────────────────────────────────
+app.get('/events', (req, res) => {
+  res.setHeader('Content-Type',  'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection',    'keep-alive')
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.flushHeaders()
+  sseClients.push(res)
+  // Estado inmediato al conectar
+  res.write(`event: status\ndata: ${JSON.stringify(statusPayload())}\n\n`)
+  res.write(`event: scenes\ndata: ${JSON.stringify({ scenes: state.scenes, mapping: state.mapping })}\n\n`)
+  req.on('close', () => {
+    const i = sseClients.indexOf(res)
+    if (i > -1) sseClients.splice(i, 1)
+  })
+})
+
+app.post('/api/connect', async (req, res) => {
+  const { obsHost, obsPort, obsPassword, tallyUrl, tallyRoom, switcher } = req.body
+
+  state.config = {
+    switcher:    switcher || 'obs',
+    obsHost:     obsHost     || '127.0.0.1',
+    obsPort:     parseInt(obsPort) || 4455,
+    obsPassword: obsPassword || '',
+    tallyUrl:    tallyUrl    || 'https://tallycomm.com',
+    tallyRoom:   tallyRoom   || ''
+  }
+
+  manualDisconnect = false
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+
+  // Resetear estado anterior
+  if (obsSocket) { try { obsSocket.terminate() } catch {} obsSocket = null }
+  Object.assign(state, {
+    connected: false, connecting: false, error: null,
+    scenes: [], pgmScene: null, pvwScene: null
+  })
+
+  try {
+    await obsConnect(state.config)
+    saveToDisk()
+    res.json({ ok: true })
+  } catch (e) {
+    res.json({ ok: false, error: e.message })
+  }
+})
+
+app.post('/api/disconnect', (req, res) => {
+  manualDisconnect = true
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+  if (obsSocket) { try { obsSocket.terminate() } catch {} obsSocket = null }
+  Object.assign(state, {
+    connected: false, connecting: false,
+    scenes: [], pgmScene: null, pvwScene: null
+  })
+  sse('status', statusPayload())
+  log('Desconectado manualmente', 'warn')
+  res.json({ ok: true })
+})
+
+app.post('/api/mapping', (req, res) => {
+  const { sceneName, cameraNumber } = req.body
+  const cam = parseInt(cameraNumber)
+  if (cam === 0) delete state.mapping[sceneName]
+  else           state.mapping[sceneName] = cam
+  saveToDisk()
+  sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+  res.json({ ok: true, mapping: state.mapping })
+})
+
+app.post('/api/test', async (req, res) => {
+  const { camera, bus } = req.body
+  await sendTallyDirect(parseInt(camera), bus)
+  res.json({ ok: true })
+})
+
+app.get('/api/status', (req, res) => res.json({
+  ...statusPayload(),
+  savedConfig: {
+    obsHost:   state.config.obsHost,
+    obsPort:   state.config.obsPort,
+    tallyUrl:  state.config.tallyUrl,
+    tallyRoom: state.config.tallyRoom,
+    switcher:  state.config.switcher
+  }
+}))
+
+// ── Arrancar ──────────────────────────────────────────────────
+const LISTEN_PORT = parseInt(process.env.TALLYBRIDGE_PORT) || PORT
+const isElectron  = !!process.versions.electron
+
+// Cargar config guardada antes de arrancar el servidor
+loadSaved()
+
+app.listen(LISTEN_PORT, '127.0.0.1', () => {
+  if (!isElectron) {
+    console.log('\n╔════════════════════════════════════╗')
+    console.log('║  TallyBridge v1.1 — TallyComm      ║')
+    console.log(`║  http://localhost:${LISTEN_PORT}              ║`)
+    console.log('╚════════════════════════════════════╝\n')
+    console.log('Presiona Ctrl+C para detener.\n')
+
+    const url = `http://localhost:${LISTEN_PORT}`
+    const cmd = process.platform === 'darwin' ? `open "${url}"` :
+                process.platform === 'win32'  ? `start ${url}`  :
+                                                `xdg-open "${url}"`
+    try { execSync(cmd) } catch {}
+  }
+})

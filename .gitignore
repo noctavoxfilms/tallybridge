@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.dmg
+*.exe
+*.blockmap
+.DS_Store
+icon.iconset/
+tallybridge-config.json

@@ -1,0 +1,63 @@
+{
+  "name": "tallybridge",
+  "version": "1.0.0",
+  "description": "TallyBridge — conecta tu switcher a TallyComm",
+  "main": "electron-main.js",
+  "scripts": {
+    "start":     "node bridge.js",
+    "electron":  "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:all": "electron-builder --mac --win",
+    "dev":       "NODE_ENV=development electron ."
+  },
+  "dependencies": {
+    "express": "^4.18.0",
+    "ws":      "^8.17.0"
+  },
+  "devDependencies": {
+    "electron":         "^29.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId":       "com.tallycomm.tallybridge",
+    "productName": "TallyBridge",
+    "copyright":   "TallyComm",
+    "files": [
+      "electron-main.js",
+      "bridge.js",
+      "bridge-ui.html",
+      "assets/**",
+      "node_modules/**",
+      "!node_modules/electron-builder/**",
+      "!node_modules/.cache/**"
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "icon":     "assets/icon.icns",
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "darkModeSupport": true
+    },
+    "win": {
+      "icon":   "assets/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ]
+    },
+    "dmg": {
+      "title": "Instala TallyBridge",
+      "window": { "width": 540, "height": 380 },
+      "contents": [
+        { "x": 150, "y": 185, "type": "file" },
+        { "x": 390, "y": 185, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": true
+    }
+  }
+}
