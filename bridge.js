@@ -248,32 +248,7 @@ function handleRGBlinkMessage(buf) {
     const pgmKey = pgmInput > 0 ? `input_${pgmInput}` : null
     const pvwKey = pvwInput > 0 ? `input_${pvwInput}` : null
 
-    log(`RGBlink tally → PGM: ${pgmInput ? 'Input '+pgmInput : '--'}  PST: ${pvwInput ? 'Input '+pvwInput : '--'}`)
-
-    const prevPgm = state.pgmScene
-    const prevPvw = state.pvwScene
-
-    if (prevPgm && prevPgm !== pgmKey) {
-      const prevCam = state.mapping[prevPgm] || 0
-      const pvwCam  = state.mapping[pvwKey]  || 0
-      if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
-    }
-    if (prevPvw && prevPvw !== pvwKey && prevPvw !== pgmKey) {
-      const prevCam = state.mapping[prevPvw] || 0
-      const pgmCam  = state.mapping[pgmKey]  || 0
-      if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
-    }
-
-    state.pgmScene = pgmKey
-    state.pvwScene = pvwKey
-
-    const pgmCam = pgmKey ? (state.mapping[pgmKey] || 0) : 0
-    const pvwCam = pvwKey ? (state.mapping[pvwKey] || 0) : 0
-
-    if (pgmCam) sendTallyDirect(pgmCam, 'program')
-    if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
-
-    sse('status', statusPayload())
+    updateTallyState(pgmKey, pvwKey)
     return
   }
 
@@ -382,36 +357,14 @@ function atemConnect(cfg) {
     })
 
     atem.on('stateChanged', (newState, paths) => {
-      for (const p of paths) {
-        if (p === 'video.mixEffects.0.programInput') {
-          const me = newState.video.mixEffects[0]
-          if (!me) continue
-          const prev = state.pgmScene
-          const next = `input_${me.programInput}`
-          log(`PGM → Input ${me.programInput}`)
-          const prevCam = state.mapping[prev] || 0
-          const pvwCam  = state.mapping[state.pvwScene] || 0
-          if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
-          state.pgmScene = next
-          const newCam = state.mapping[next] || 0
-          if (newCam) sendTallyDirect(newCam, 'program')
-          sse('status', statusPayload())
-        }
-        if (p === 'video.mixEffects.0.previewInput') {
-          const me = newState.video.mixEffects[0]
-          if (!me) continue
-          const prev = state.pvwScene
-          const next = `input_${me.previewInput}`
-          log(`PVW → Input ${me.previewInput}`)
-          const prevCam = state.mapping[prev] || 0
-          const pgmCam  = state.mapping[state.pgmScene] || 0
-          if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
-          state.pvwScene = next
-          const newCam = state.mapping[next] || 0
-          if (newCam && newCam !== pgmCam) sendTallyDirect(newCam, 'preview')
-          sse('status', statusPayload())
-        }
-      }
+      const hasPgm = paths.includes('video.mixEffects.0.programInput')
+      const hasPvw = paths.includes('video.mixEffects.0.previewInput')
+      if (!hasPgm && !hasPvw) return
+      const me = newState.video.mixEffects[0]
+      if (!me) return
+      const pgmKey = `input_${me.programInput}`
+      const pvwKey = `input_${me.previewInput}`
+      updateTallyState(pgmKey, pvwKey)
     })
 
     atem.connect(host).catch((e) => {
@@ -502,6 +455,8 @@ function vmixConnect(cfg) {
 
     sock.on('data', (data) => {
       vmixBuffer += data.toString('utf8')
+      // Guard against malformed data flooding the buffer (#8)
+      if (vmixBuffer.length > 10240) vmixBuffer = vmixBuffer.slice(-2048)
       _processVmixBuffer()
     })
 
@@ -542,10 +497,11 @@ function _processVmixBuffer() {
 
 function _handleVmixTally(tallyStr) {
   // Each char = 1 input: 0=off, 1=PGM, 2=PVW
+  // Take FIRST match (not last) — vMix can have multiple PGM with overlays (#10)
   let newPgm = null, newPvw = null
   for (let i = 0; i < tallyStr.length; i++) {
-    if (tallyStr[i] === '1') newPgm = i + 1
-    if (tallyStr[i] === '2') newPvw = i + 1
+    if (tallyStr[i] === '1' && !newPgm) newPgm = i + 1
+    if (tallyStr[i] === '2' && !newPvw) newPvw = i + 1
   }
 
   const pgmKey = newPgm ? `input_${newPgm}` : null
@@ -561,32 +517,7 @@ function _handleVmixTally(tallyStr) {
     sse('scenes', { scenes: state.scenes, mapping: state.mapping })
   }
 
-  log(`vMix tally → PGM: ${newPgm || '--'}  PVW: ${newPvw || '--'}`)
-
-  const prevPgm = state.pgmScene
-  const prevPvw = state.pvwScene
-
-  if (prevPgm && prevPgm !== pgmKey) {
-    const prevCam = state.mapping[prevPgm] || 0
-    const pvwCam  = state.mapping[pvwKey]  || 0
-    if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
-  }
-  if (prevPvw && prevPvw !== pvwKey && prevPvw !== pgmKey) {
-    const prevCam = state.mapping[prevPvw] || 0
-    const pgmCam  = state.mapping[pgmKey]  || 0
-    if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
-  }
-
-  state.pgmScene = pgmKey
-  state.pvwScene = pvwKey
-
-  const pgmCam = pgmKey ? (state.mapping[pgmKey] || 0) : 0
-  const pvwCam = pvwKey ? (state.mapping[pvwKey] || 0) : 0
-
-  if (pgmCam) sendTallyDirect(pgmCam, 'program')
-  if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
-
-  sse('status', statusPayload())
+  updateTallyState(pgmKey, pvwKey)
 }
 
 function vmixDisconnect() {
@@ -757,42 +688,17 @@ function obsCall(requestType, requestData = {}) {
 
 function handleEvent({ eventType, eventData }) {
   if (eventType === 'CurrentProgramSceneChanged') {
-    const prev = state.pgmScene
     const next = eventData.sceneName
-    log(`PGM → "${next}"`)
-    const prevCam = state.mapping[prev] || 0
-    const pvwCam  = state.mapping[state.pvwScene] || 0
-    if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
-    state.pgmScene = next
-    const newCam = state.mapping[next] || 0
-    if (newCam) sendTallyDirect(newCam, 'program')
-    sse('status', statusPayload())
+    updateTallyState(next, state.pvwScene)
+    // Sync PVW after PGM change (Studio Mode auto-advances preview)
     setTimeout(() => {
       obsCall('GetCurrentPreviewScene').then(r => {
         const pvw = r.currentPreviewSceneName || null
-        if (pvw && pvw !== state.pvwScene) {
-          log(`PVW sync → "${pvw}" (Studio Mode)`)
-          const oldPvwCam = state.mapping[state.pvwScene] || 0
-          const pgmCam2   = state.mapping[state.pgmScene] || 0
-          if (oldPvwCam && oldPvwCam !== pgmCam2) sendTallyDirect(oldPvwCam, 'clear')
-          state.pvwScene = pvw
-          const newPvwCam = state.mapping[pvw] || 0
-          if (newPvwCam && newPvwCam !== pgmCam2) sendTallyDirect(newPvwCam, 'preview')
-          sse('status', statusPayload())
-        }
+        if (pvw && pvw !== state.pvwScene) updateTallyState(state.pgmScene, pvw)
       }).catch(() => {})
     }, 120)
   } else if (eventType === 'CurrentPreviewSceneChanged') {
-    const prev = state.pvwScene
-    const next = eventData.sceneName
-    log(`PVW → "${next}"`)
-    const prevCam = state.mapping[prev] || 0
-    const pgmCam  = state.mapping[state.pgmScene] || 0
-    if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
-    state.pvwScene = next
-    const newCam = state.mapping[next] || 0
-    if (newCam) sendTallyDirect(newCam, 'preview')
-    sse('status', statusPayload())
+    updateTallyState(state.pgmScene, eventData.sceneName)
   } else if (eventType === 'SceneListChanged') {
     obsCall('GetSceneList').then(data => {
       state.scenes = [...(data.scenes || [])].reverse()
@@ -800,6 +706,39 @@ function handleEvent({ eventType, eventData }) {
       sse('scenes', { scenes: state.scenes, mapping: state.mapping })
     }).catch(() => {})
   }
+}
+
+// ── Tally state machine (shared by all switchers) ───────────────
+function updateTallyState(newPgmKey, newPvwKey) {
+  // Skip if nothing changed (#12 dedup)
+  if (newPgmKey === state.pgmScene && newPvwKey === state.pvwScene) return
+
+  const prevPgm = state.pgmScene
+  const prevPvw = state.pvwScene
+
+  // Clear previous PGM cam if it's no longer PGM or PVW
+  if (prevPgm && prevPgm !== newPgmKey) {
+    const prevCam = state.mapping[prevPgm] || 0
+    const pvwCam  = state.mapping[newPvwKey] || 0
+    if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
+  }
+  // Clear previous PVW cam if it's no longer PVW or PGM
+  if (prevPvw && prevPvw !== newPvwKey && prevPvw !== newPgmKey) {
+    const prevCam = state.mapping[prevPvw] || 0
+    const pgmCam  = state.mapping[newPgmKey] || 0
+    if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
+  }
+
+  state.pgmScene = newPgmKey
+  state.pvwScene = newPvwKey
+
+  const pgmCam = newPgmKey ? (state.mapping[newPgmKey] || 0) : 0
+  const pvwCam = newPvwKey ? (state.mapping[newPvwKey] || 0) : 0
+
+  if (pgmCam) sendTallyDirect(pgmCam, 'program')
+  if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
+
+  sse('status', statusPayload())
 }
 
 // ── Tally HTTP → TallyComm ──────────────────────────────────────
@@ -945,5 +884,19 @@ app.listen(LISTEN_PORT, '127.0.0.1', () => {
     const url = `http://localhost:${LISTEN_PORT}`
     const cmd = process.platform === 'darwin' ? `open "${url}"` : process.platform === 'win32' ? `start ${url}` : `xdg-open "${url}"`
     try { execSync(cmd) } catch {}
+  }
+
+  // Auto-connect to last used switcher if config was saved (#20)
+  const sw = state.config.switcher
+  const room = state.config.tallyRoom?.trim()
+  if (room && sw) {
+    log(`Auto-conectando a ${sw}…`)
+    const connectFn = sw === 'atem' ? atemConnect
+      : sw === 'vmix' ? vmixConnect
+      : sw === 'rgblink' ? rgblinkConnect
+      : obsConnect
+    connectFn(state.config).catch(e => {
+      log('Auto-conexión fallida: ' + e.message, 'warn')
+    })
   }
 })

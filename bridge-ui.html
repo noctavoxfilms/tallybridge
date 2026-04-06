@@ -776,7 +776,7 @@ function addLog({ msg, type, ts }) {
   const icon = type === 'success' ? '\u2713' : type === 'error' ? '\u2717' : type === 'warn' ? '!' : '\u00b7'
   const entry = document.createElement('div')
   entry.className = `log-entry ${type}`
-  entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-icon">${icon}</span><span class="log-msg">${msg}</span>`
+  entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-icon">${icon}</span><span class="log-msg">${esc(msg)}</span>`
   scroll.appendChild(entry)
   while (scroll.children.length > 200) scroll.removeChild(scroll.firstChild)
   scroll.scrollTop = scroll.scrollHeight
