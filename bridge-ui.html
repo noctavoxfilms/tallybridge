@@ -28,9 +28,9 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .brand{display:flex;align-items:center;gap:10px;}
 .brand-dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 8px var(--red);animation:blink 2s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
-.brand-name{font-size:18px;font-weight:900;letter-spacing:.2em;}
+.brand-name{font-size:20px;font-weight:900;letter-spacing:.2em;}
 .brand-name em{color:var(--red);font-style:normal;}
-.brand-ver{font-family:var(--mono);font-size:9px;color:var(--txt4);margin-top:1px;}
+.brand-ver{font-family:var(--mono);font-size:10px;color:var(--txt4);margin-top:1px;}
 .status-chip{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;border:1px solid var(--b2);background:var(--s2);color:var(--txt3);transition:all .2s;}
 .status-chip.connecting{border-color:var(--ylw);color:var(--ylw);background:var(--ylw-bg);}
 .status-chip.connected{border-color:var(--grn);color:var(--grn);background:var(--grn-bg);}
@@ -43,12 +43,12 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .sidebar{width:300px;flex-shrink:0;border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;}
 
 /* CONNECT FORM */
-.connect-wrap{max-width:520px;margin:40px auto;padding:0 20px;}
+.connect-wrap{max-width:560px;margin:40px auto;padding:0 20px;}
 .connect-header{margin-bottom:28px;}
 .connect-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--red);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .connect-eyebrow::before{content:'';width:20px;height:1px;background:var(--red);}
 .connect-title{font-size:32px;font-weight:900;line-height:1.1;margin-bottom:8px;}
-.connect-sub{font-family:var(--mono);font-size:11px;color:var(--txt3);line-height:1.7;}
+.connect-sub{font-family:var(--mono);font-size:12px;color:var(--txt3);line-height:1.7;}
 .form-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);padding:20px;margin-bottom:14px;}
 .form-section-label{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--txt4);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 .form-section-label::after{content:'';flex:1;height:1px;background:var(--b1);}
@@ -77,8 +77,18 @@ select.input option{background:#1a1a1a;}
 .switch-opt.soon .switch-opt-name{color:var(--txt4);}
 .switch-opt.soon{cursor:not-allowed;opacity:.5;}
 
+/* SETUP STEPS */
+.setup-steps{background:var(--bg);border:1px solid var(--b1);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;}
+.setup-steps-title{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--txt3);margin-bottom:10px;}
+.setup-step{display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;}
+.setup-step:last-child{margin-bottom:0;}
+.step-num{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blu);flex-shrink:0;width:18px;text-align:center;}
+.step-text{font-family:var(--sans);font-size:13px;color:var(--txt2);line-height:1.5;}
+.step-text strong{color:var(--txt);font-weight:700;}
+.step-text code{font-family:var(--mono);font-size:11px;background:var(--s2);padding:1px 5px;border-radius:2px;color:var(--blu);}
+
 /* FIELD HINT */
-.field-hint{font-family:var(--mono);font-size:9px;color:var(--txt4);}
+.field-hint{font-family:var(--mono);font-size:10px;color:var(--txt4);}
 
 /* CONNECT BUTTON */
 .connect-btn{width:100%;padding:14px;background:var(--red);border:none;border-radius:var(--radius);color:#fff;font-family:var(--sans);font-size:17px;font-weight:700;letter-spacing:.12em;cursor:pointer;transition:opacity .15s;margin-top:4px;}
@@ -103,8 +113,8 @@ select.input option{background:#1a1a1a;}
 
 /* SECTION */
 .section-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
-.section-title{font-size:14px;font-weight:700;color:var(--txt2);}
-.section-hint{font-family:var(--mono);font-size:9px;color:var(--txt4);}
+.section-title{font-size:15px;font-weight:700;color:var(--txt2);}
+.section-hint{font-family:var(--mono);font-size:10px;color:var(--txt4);}
 .auto-btn{padding:5px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);color:var(--txt3);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.08em;transition:all .12s;}
 .auto-btn:hover{border-color:var(--b3);color:var(--txt2);}
 
@@ -142,7 +152,7 @@ select.input option{background:#1a1a1a;}
 .log-entry.success{color:var(--grn);}
 .log-entry.warn{color:var(--ylw);}
 .log-entry.error{color:var(--red);background:rgba(255,59,59,.06);}
-.log-ts{color:var(--txt4);flex-shrink:0;font-size:9px;margin-top:1px;}
+.log-ts{color:var(--txt4);flex-shrink:0;font-size:10px;margin-top:1px;}
 .log-icon{flex-shrink:0;}
 .log-msg{line-height:1.4;word-break:break-all;}
 
@@ -340,27 +350,38 @@ function renderConnect(error) {
 function renderOBSFields() {
   return `
     <div class="form-section-label">OBS STUDIO</div>
+    <div class="setup-steps">
+      <div class="setup-steps-title">COMO ACTIVAR WEBSOCKET EN OBS</div>
+      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Abre OBS Studio (versión 28 o superior)</span></div>
+      <div class="setup-step"><span class="step-num">2</span><span class="step-text">Ve a <strong>Tools → WebSocket Server Settings</strong></span></div>
+      <div class="setup-step"><span class="step-num">3</span><span class="step-text">Activa <strong>"Enable WebSocket Server"</strong></span></div>
+      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Puerto por defecto: <code>4455</code> — no cambiar a menos que haya conflicto</span></div>
+      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Si activaste contraseña en OBS, ingrésala abajo. Si no, déjalo vacío</span></div>
+      <div class="setup-step"><span class="step-num">6</span><span class="step-text">Click <strong>OK</strong> en OBS y luego <strong>CONECTAR</strong> aquí</span></div>
+    </div>
     <div class="field">
       <span class="field-label">HOST / IP</span>
       <div class="field-row">
         <input class="input" type="text"   id="obsHost" value="${ui.savedObsHost || '127.0.0.1'}" placeholder="127.0.0.1">
-        <input class="input" type="number" id="obsPort" value="${ui.savedObsPort || 4455}" placeholder="4455" style="max-width:90px;">
+        <input class="input" type="number" id="obsPort" value="${ui.savedObsPort || 4455}" placeholder="4455" style="max-width:100px;">
       </div>
       <span class="field-hint">127.0.0.1 si OBS corre en esta misma computadora</span>
     </div>
     <div class="field">
       <span class="field-label">PASSWORD (si tiene)</span>
       <input class="input" type="password" id="obsPassword" placeholder="Dejar vacío si no tiene contraseña">
-      <span class="field-hint">Ver en OBS: Tools → WebSocket Server Settings</span>
     </div>`
 }
 
 function renderRGBlinkFields() {
   return `
     <div class="form-section-label">RGBLINK MINI</div>
-    <div class="rgb-info">
-      <strong>Protocolo UDP</strong> — TallyBridge escucha paquetes de tally en tu red local.<br>
-      Asegúrate de que el RGBlink mini esté en la misma red que esta computadora.
+    <div class="setup-steps">
+      <div class="setup-steps-title">COMO CONECTAR EL RGBLINK MINI</div>
+      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Conecta el RGBlink mini a tu red local por <strong>cable Ethernet</strong></span></div>
+      <div class="setup-step"><span class="step-num">2</span><span class="step-text">En la pantalla del dispositivo, navega a <strong>SETTING → LAN</strong> para ver su IP</span></div>
+      <div class="setup-step"><span class="step-num">3</span><span class="step-text">Asegúrate de que esta computadora esté en la <strong>misma red</strong> que el RGBlink</span></div>
+      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Ingresa la IP abajo y click <strong>CONECTAR</strong> — TallyBridge auto-mapea Input 1 → CAM 1, etc.</span></div>
     </div>
     <div class="field">
       <span class="field-label">IP DEL DISPOSITIVO</span>
@@ -368,15 +389,15 @@ function renderRGBlinkFields() {
         value="${ui.savedRgblinkHost || '192.168.1.100'}"
         placeholder="192.168.1.100"
         autocorrect="off" autocapitalize="off" spellcheck="false">
-      <span class="field-hint">IP del RGBlink mini en tu red — ver en la pantalla del dispositivo</span>
+      <span class="field-hint">IP que aparece en la pantalla del RGBlink mini</span>
     </div>
     <div class="field">
       <span class="field-label">PUERTO UDP</span>
       <input class="input" type="number" id="rgblinkPort"
         value="${ui.savedRgblinkPort || 1000}"
-        placeholder="4001"
+        placeholder="1000"
         style="max-width:120px;">
-      <span class="field-hint">Puerto por defecto: 4001</span>
+      <span class="field-hint">Puerto por defecto: 1000 — no cambiar a menos que lo hayas modificado en el dispositivo</span>
     </div>`
 }
 
