@@ -60,7 +60,7 @@ const state = {
     obsHost:       '127.0.0.1',
     obsPort:       4455,
     obsPassword:   '',
-    rgblinkHost:   '192.168.1.100',
+    rgblinkHost:   '192.168.0.99',
     rgblinkPort:   1000,
     tallyUrl:      'https://tallycomm.com',
     tallyRoom:     ''
@@ -119,7 +119,7 @@ function rgblinkConnect(cfg) {
     sse('status', statusPayload())
 
     const port = parseInt(cfg.rgblinkPort) || RGBLINK_PORT
-    const host = cfg.rgblinkHost || '192.168.1.100'
+    const host = cfg.rgblinkHost || '192.168.0.99'
     rgbNextSn  = 0
 
     log(`Conectando a RGBlink mini en ${host}:${port}…`)
@@ -529,7 +529,7 @@ app.post('/api/connect', async (req, res) => {
     obsHost:     obsHost     || '127.0.0.1',
     obsPort:     parseInt(obsPort) || 4455,
     obsPassword: obsPassword || '',
-    rgblinkHost: rgblinkHost || '192.168.1.100',
+    rgblinkHost: rgblinkHost || '192.168.0.99',
     rgblinkPort: parseInt(rgblinkPort) || RGBLINK_PORT,
     tallyUrl:    tallyUrl    || 'https://tallycomm.com',
     tallyRoom:   tallyRoom   || ''

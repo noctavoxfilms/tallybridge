@@ -378,16 +378,17 @@ function renderRGBlinkFields() {
     <div class="form-section-label">RGBLINK MINI</div>
     <div class="setup-steps">
       <div class="setup-steps-title">COMO CONECTAR EL RGBLINK MINI</div>
-      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Conecta el RGBlink mini a tu red local por <strong>cable Ethernet</strong></span></div>
-      <div class="setup-step"><span class="step-num">2</span><span class="step-text">En la pantalla del dispositivo, navega a <strong>SETTING → LAN</strong> para ver su IP</span></div>
-      <div class="setup-step"><span class="step-num">3</span><span class="step-text">Asegúrate de que esta computadora esté en la <strong>misma red</strong> que el RGBlink</span></div>
-      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Ingresa la IP abajo y click <strong>CONECTAR</strong> — TallyBridge auto-mapea Input 1 → CAM 1, etc.</span></div>
+      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Conecta el RGBlink mini al router/switch con <strong>cable Ethernet (RJ45)</strong> — no soporta WiFi ni USB para control</span></div>
+      <div class="setup-step"><span class="step-num">2</span><span class="step-text">En el mini, presiona el <strong>botón M</strong> → navega a <strong>SETTING → LAN</strong></span></div>
+      <div class="setup-step"><span class="step-num">3</span><span class="step-text">Activa <strong>DHCP ON</strong> para obtener IP automáticamente, o anota la IP manual (default de fábrica: <code>192.168.0.99</code>)</span></div>
+      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Asegúrate de que esta computadora esté en la <strong>misma red y subnet</strong> que el RGBlink</span></div>
+      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Ingresa la IP abajo y click <strong>CONECTAR</strong> — TallyBridge auto-mapea Input 1 → CAM 1, etc.</span></div>
     </div>
     <div class="field">
       <span class="field-label">IP DEL DISPOSITIVO</span>
       <input class="input" type="text" id="rgblinkHost"
-        value="${ui.savedRgblinkHost || '192.168.1.100'}"
-        placeholder="192.168.1.100"
+        value="${ui.savedRgblinkHost || '192.168.0.99'}"
+        placeholder="192.168.0.99"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">IP que aparece en la pantalla del RGBlink mini</span>
     </div>
@@ -570,7 +571,7 @@ async function doConnect() {
     obsHost:     document.getElementById('obsHost')?.value.trim()     || '127.0.0.1',
     obsPort:     document.getElementById('obsPort')?.value            || '4455',
     obsPassword: document.getElementById('obsPassword')?.value        || '',
-    rgblinkHost: document.getElementById('rgblinkHost')?.value.trim() || '192.168.1.100',
+    rgblinkHost: document.getElementById('rgblinkHost')?.value.trim() || '192.168.0.99',
     rgblinkPort: document.getElementById('rgblinkPort')?.value        || '4001',
     tallyRoom:   document.getElementById('tallyRoom')?.value.trim()   || '',
     tallyUrl:    document.getElementById('tallyUrl')?.value.trim()    || 'https://tallycomm.com'
