@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -31,6 +31,12 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .brand-name{font-size:20px;font-weight:900;letter-spacing:.2em;}
 .brand-name em{color:var(--red);font-style:normal;}
 .brand-ver{font-family:var(--mono);font-size:10px;color:var(--txt4);margin-top:1px;}
+.topbar-right{display:flex;align-items:center;gap:12px;}
+.lang-toggle{display:flex;font-family:var(--mono);font-size:10px;letter-spacing:.06em;border:1px solid var(--b2);border-radius:20px;overflow:hidden;cursor:pointer;user-select:none;}
+.lang-toggle span{padding:4px 10px;transition:all .15s;}
+.lang-toggle span.active{background:var(--blu-bg);color:var(--blu);border-color:var(--blu);}
+.lang-toggle span:not(.active){color:var(--txt4);}
+.lang-toggle span:not(.active):hover{color:var(--txt3);}
 .status-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;border:1px solid var(--b2);background:var(--s2);color:var(--txt3);transition:all .2s;}
 .status-chip.connecting{border-color:var(--ylw);color:var(--ylw);background:var(--ylw-bg);}
 .status-chip.connected{border-color:var(--grn);color:var(--grn);background:var(--grn-bg);}
@@ -132,10 +138,6 @@ select.input option{background:#1a1a1a;}
 .cam-select.assigned{border-color:rgba(61,158,255,.4);color:var(--blu);}
 .cam-select option{background:#1e1e1e;}
 
-/* RGBlink info banner */
-.rgb-info{background:rgba(255,59,59,.06);border:1px solid rgba(255,59,59,.2);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-family:var(--mono);font-size:10px;color:var(--txt3);line-height:1.7;}
-.rgb-info strong{color:var(--red);}
-
 /* DISCONNECT */
 .disconnect-btn{padding:7px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);color:var(--txt3);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.08em;transition:all .12s;}
 .disconnect-btn:hover{border-color:var(--red);color:var(--red);}
@@ -187,9 +189,15 @@ select.input option{background:#1a1a1a;}
       <div class="brand-ver">v1.3.0 — TallyComm</div>
     </div>
   </div>
-  <div class="status-chip" id="status-chip">
-    <div class="status-dot"></div>
-    <span id="status-text">DESCONECTADO</span>
+  <div class="topbar-right">
+    <div class="lang-toggle" id="lang-toggle" onclick="toggleLang()">
+      <span id="lang-en">EN</span>
+      <span id="lang-es">ES</span>
+    </div>
+    <div class="status-chip" id="status-chip">
+      <div class="status-dot"></div>
+      <span id="status-text">DISCONNECTED</span>
+    </div>
   </div>
 </div>
 
@@ -197,23 +205,141 @@ select.input option{background:#1a1a1a;}
   <div class="main" id="main-area"></div>
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <span>LOG DE ACTIVIDAD</span>
-      <button class="clear-log" onclick="clearLog()">LIMPIAR</button>
+      <span id="log-title">ACTIVITY LOG</span>
+      <button class="clear-log" onclick="clearLog()" id="log-clear-btn">CLEAR</button>
     </div>
     <div class="log-scroll" id="log-scroll">
       <div class="log-entry info">
         <span class="log-ts">--:--:--</span>
-        <span class="log-msg">TallyBridge v1.3.0 iniciado. Configura la conexión para comenzar.</span>
+        <span class="log-msg" id="log-init-msg">TallyBridge v1.3.0 started. Configure connection to begin.</span>
       </div>
     </div>
     <div class="test-panel" id="test-panel" style="display:none;">
-      <div class="test-label">TEST MANUAL</div>
+      <div class="test-label" id="test-label">MANUAL TEST</div>
       <div class="test-grid" id="test-grid"></div>
     </div>
   </div>
 </div>
 
 <script>
+// ── i18n ──────────────────────────────────────────────────────
+var _lang = (function() {
+  var s = localStorage.getItem('tb-lang')
+  if (s === 'en' || s === 'es') return s
+  return (navigator.language || 'en').toLowerCase().startsWith('es') ? 'es' : 'en'
+})()
+
+var _i = {
+  disconnected:     { en: 'DISCONNECTED',   es: 'DESCONECTADO' },
+  connecting:       { en: 'CONNECTING...',   es: 'CONECTANDO...' },
+  connected:        { en: 'CONNECTED',       es: 'CONECTADO' },
+  error:            { en: 'ERROR',           es: 'ERROR' },
+  config:           { en: 'CONFIGURATION',   es: 'CONFIGURACION' },
+  connectTitle:     { en: 'Connect your<br>switcher', es: 'Conecta tu<br>switcher' },
+  connectSub:       { en: 'TallyBridge runs locally on your computer and sends<br>tally in real time to TallyComm.', es: 'TallyBridge corre localmente en tu computadora y env\u00eda<br>el tally en tiempo real a TallyComm.' },
+  connectBtn:       { en: 'CONNECT',         es: 'CONECTAR' },
+  connectingBtn:    { en: 'CONNECTING...',   es: 'CONECTANDO...' },
+  disconnect:       { en: 'DISCONNECT',      es: 'DESCONECTAR' },
+  roomName:         { en: 'ROOM NAME',       es: 'NOMBRE DE SALA' },
+  roomPlaceholder:  { en: 'e.g.: show-jan-2026', es: 'ej: show-enero-2026' },
+  roomHint:         { en: 'Same room name used by camera operators', es: 'El mismo nombre que usan los camar\u00f3grafos al entrar' },
+  serverUrl:        { en: 'SERVER URL',      es: 'URL DEL SERVIDOR' },
+  hostIp:           { en: 'HOST / IP',       es: 'HOST / IP' },
+  password:         { en: 'PASSWORD (if set)', es: 'PASSWORD (si tiene)' },
+  passwordHint:     { en: 'Leave empty if no password', es: 'Dejar vac\u00edo si no tiene contrase\u00f1a' },
+  noSignal:         { en: 'No signal',       es: 'Sin se\u00f1al' },
+  room:             { en: 'Room',            es: 'Sala' },
+  ignore:           { en: 'Ignore',          es: 'Ignorar' },
+  camTallycomm:     { en: 'TALLYCOMM CAMERA', es: 'C\u00c1MARA TALLYCOMM' },
+  autoDetect:       { en: 'AUTO-DETECT',     es: 'AUTO-DETECTAR' },
+  waitingSwitcher:  { en: 'Waiting for switcher data...', es: 'Esperando datos del switcher...' },
+  assignCams:       { en: 'Assign cameras to test', es: 'Asigna c\u00e1maras para probar' },
+  manualTest:       { en: 'MANUAL TEST',     es: 'TEST MANUAL' },
+  activityLog:      { en: 'ACTIVITY LOG',    es: 'LOG DE ACTIVIDAD' },
+  clear:            { en: 'CLEAR',           es: 'LIMPIAR' },
+  initMsg:          { en: 'TallyBridge v1.3.0 started. Configure connection to begin.', es: 'TallyBridge v1.3.0 iniciado. Configura la conexi\u00f3n para comenzar.' },
+  enterRoom:        { en: 'You must enter a room name', es: 'Debes ingresar el nombre de sala' },
+  selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
+  connectedTo:      { en: 'CONNECTED TO',    es: 'CONECTADO A' },
+  // OBS
+  obsTitle:         { en: 'OBS STUDIO',      es: 'OBS STUDIO' },
+  obsGuide:         { en: 'HOW TO ENABLE WEBSOCKET IN OBS', es: 'COMO ACTIVAR WEBSOCKET EN OBS' },
+  obsStep1:         { en: 'Open OBS Studio (version 28 or higher)', es: 'Abre OBS Studio (versi\u00f3n 28 o superior)' },
+  obsStep2:         { en: 'Go to <strong>Tools \u2192 WebSocket Server Settings</strong>', es: 'Ve a <strong>Tools \u2192 WebSocket Server Settings</strong>' },
+  obsStep3:         { en: 'Enable <strong>"Enable WebSocket Server"</strong>', es: 'Activa <strong>"Enable WebSocket Server"</strong>' },
+  obsStep4:         { en: 'Default port: <code>4455</code> \u2014 don\'t change unless there\'s a conflict', es: 'Puerto por defecto: <code>4455</code> \u2014 no cambiar a menos que haya conflicto' },
+  obsStep5:         { en: 'If you set a password in OBS, enter it below. Otherwise leave empty', es: 'Si activaste contrase\u00f1a en OBS, ingr\u00e9sala abajo. Si no, d\u00e9jalo vac\u00edo' },
+  obsStep6:         { en: 'Click <strong>OK</strong> in OBS then <strong>CONNECT</strong> here', es: 'Click <strong>OK</strong> en OBS y luego <strong>CONECTAR</strong> aqu\u00ed' },
+  obsHostHint:      { en: '127.0.0.1 if OBS runs on this same computer', es: '127.0.0.1 si OBS corre en esta misma computadora' },
+  obsColLabel:      { en: 'OBS SCENE',       es: 'ESCENA OBS' },
+  obsMapTitle:      { en: 'SCENE \u2192 CAMERA MAPPING', es: 'MAPEO DE ESCENAS \u2192 C\u00c1MARAS' },
+  obsMapHint:       { en: 'Assign each OBS scene to a TallyComm camera', es: 'Asigna cada escena de OBS a una c\u00e1mara de TallyComm' },
+  obsAutoMsg:       { en: 'Auto-detected %d scenes', es: 'Auto-detectadas %d escenas' },
+  obsAutoFail:      { en: 'No patterns detected (e.g.: "Camera 1", "CAM 2")', es: 'No se detectaron patrones (ej: "Camera 1", "CAM 2")' },
+  // ATEM
+  atemTitle:        { en: 'BLACKMAGIC ATEM',  es: 'BLACKMAGIC ATEM' },
+  atemGuide:        { en: 'HOW TO CONNECT THE ATEM', es: 'COMO CONECTAR EL ATEM' },
+  atemStep1:        { en: 'Connect the ATEM to your router/switch via <strong>Ethernet cable (RJ45)</strong>, or directly to this computer', es: 'Conecta el ATEM al router/switch o directamente a esta computadora con <strong>cable Ethernet (RJ45)</strong>' },
+  atemStep2:        { en: 'Open <strong>ATEM Software Control</strong> on your computer to check the switcher\'s IP', es: 'Abre <strong>ATEM Software Control</strong> en tu computadora para verificar la IP del switcher' },
+  atemStep3:        { en: 'Factory default IP is <code>192.168.10.240</code> \u2014 use the current IP if you changed it', es: 'La IP por defecto de f\u00e1brica es <code>192.168.10.240</code> \u2014 si la cambiaste, usa la IP actual' },
+  atemStep4:        { en: 'Make sure this computer is on the <strong>same network and subnet</strong> as the ATEM', es: 'Aseg\u00farate de que esta computadora est\u00e9 en la <strong>misma red y subnet</strong> que el ATEM' },
+  atemStep5:        { en: 'Enter the IP below and click <strong>CONNECT</strong> \u2014 no password or extra config needed', es: 'Ingresa la IP abajo y click <strong>CONECTAR</strong> \u2014 no requiere contrase\u00f1a ni configuraci\u00f3n adicional' },
+  atemIpLabel:      { en: 'ATEM IP ADDRESS', es: 'IP DEL ATEM' },
+  atemIpHint:       { en: 'Default: 192.168.10.240 \u2014 check in ATEM Software Control or device screen', es: 'IP por defecto: 192.168.10.240 \u2014 verificar en ATEM Software Control o en la pantalla del dispositivo' },
+  atemColLabel:     { en: 'ATEM INPUT',      es: 'ENTRADA ATEM' },
+  atemMapTitle:     { en: 'INPUT \u2192 CAMERA MAPPING', es: 'MAPEO DE ENTRADAS \u2192 C\u00c1MARAS' },
+  atemMapHint:      { en: 'Physical ATEM inputs. Auto-mapped on connect.', es: 'Entradas f\u00edsicas del ATEM. Auto-mapeado al conectar.' },
+  // vMix
+  vmixTitle:        { en: 'VMIX',            es: 'VMIX' },
+  vmixGuide:        { en: 'HOW TO CONNECT VMIX', es: 'COMO CONECTAR VMIX' },
+  vmixStep1:        { en: 'Open <strong>vMix</strong> on the production computer', es: 'Abre <strong>vMix</strong> en la computadora de producci\u00f3n' },
+  vmixStep2:        { en: 'Go to <strong>Settings \u2192 Web Controller</strong> and verify it\'s <strong>enabled</strong> (it is by default)', es: 'Ve a <strong>Settings \u2192 Web Controller</strong> y verifica que est\u00e9 <strong>habilitado</strong> (lo est\u00e1 por defecto)' },
+  vmixStep3:        { en: 'The TCP API port is always <code>8099</code> \u2014 different from the Web Controller port (8088)', es: 'El puerto TCP API es siempre <code>8099</code> \u2014 es diferente al puerto del Web Controller (8088)' },
+  vmixStep4:        { en: 'If TallyBridge runs on a <strong>different computer</strong>, use the vMix PC\'s IP and make sure Windows Firewall allows port 8099', es: 'Si TallyBridge corre en <strong>otra computadora</strong>, usa la IP de la PC con vMix y verifica que el firewall de Windows permita el puerto 8099' },
+  vmixStep5:        { en: 'Click <strong>CONNECT</strong> \u2014 no password needed', es: 'Click <strong>CONECTAR</strong> \u2014 no requiere contrase\u00f1a' },
+  vmixHostHint:     { en: '127.0.0.1 if vMix runs on this same computer \u2014 port always 8099', es: '127.0.0.1 si vMix corre en esta misma computadora \u2014 puerto siempre 8099' },
+  vmixColLabel:     { en: 'VMIX INPUT',      es: 'INPUT VMIX' },
+  vmixMapHint:      { en: 'vMix inputs. Auto-mapped on connect.', es: 'Inputs de vMix. Auto-mapeado al conectar.' },
+  // RGBlink
+  rgbTitle:         { en: 'RGBLINK MINI',    es: 'RGBLINK MINI' },
+  rgbGuide:         { en: 'HOW TO CONNECT THE RGBLINK MINI', es: 'COMO CONECTAR EL RGBLINK MINI' },
+  rgbStep1:         { en: 'Connect the RGBlink mini to your router/switch or directly to this computer via <strong>Ethernet cable (RJ45)</strong> \u2014 no WiFi or USB for control', es: 'Conecta el RGBlink mini al router/switch o directamente a esta computadora con <strong>cable Ethernet (RJ45)</strong> \u2014 no soporta WiFi ni USB para control' },
+  rgbStep2:         { en: 'On the mini, press <strong>M button</strong> \u2192 navigate to <strong>SETTING \u2192 LAN</strong>', es: 'En el mini, presiona el <strong>bot\u00f3n M</strong> \u2192 navega a <strong>SETTING \u2192 LAN</strong>' },
+  rgbStep3:         { en: 'Enable <strong>DHCP ON</strong> for automatic IP, or note the manual IP (factory default: <code>192.168.0.99</code>)', es: 'Activa <strong>DHCP ON</strong> para obtener IP autom\u00e1ticamente, o anota la IP manual (default de f\u00e1brica: <code>192.168.0.99</code>)' },
+  rgbStep4:         { en: 'Make sure this computer is on the <strong>same network and subnet</strong> as the RGBlink', es: 'Aseg\u00farate de que esta computadora est\u00e9 en la <strong>misma red y subnet</strong> que el RGBlink' },
+  rgbStep5:         { en: 'Enter the IP below and click <strong>CONNECT</strong> \u2014 TallyBridge auto-maps Input 1 \u2192 CAM 1, etc.', es: 'Ingresa la IP abajo y click <strong>CONECTAR</strong> \u2014 TallyBridge auto-mapea Input 1 \u2192 CAM 1, etc.' },
+  rgbIpLabel:       { en: 'DEVICE IP',       es: 'IP DEL DISPOSITIVO' },
+  rgbIpHint:        { en: 'IP shown on the RGBlink mini screen', es: 'IP que aparece en la pantalla del RGBlink mini' },
+  rgbPortLabel:     { en: 'UDP PORT',        es: 'PUERTO UDP' },
+  rgbPortHint:      { en: 'Default port: 1000 \u2014 don\'t change unless modified on the device', es: 'Puerto por defecto: 1000 \u2014 no cambiar a menos que lo hayas modificado en el dispositivo' },
+  rgbColLabel:      { en: 'RGBLINK INPUT',   es: 'ENTRADA RGBLINK' },
+  rgbMapHint:       { en: 'Input 1 = button 1 on RGBlink, etc. Auto-mapped on connect.', es: 'Input 1 = bot\u00f3n 1 del RGBlink, etc. Auto-mapeado al conectar.' }
+}
+
+function t(k) { return (_i[k] && _i[k][_lang]) || k }
+
+function toggleLang() {
+  _lang = _lang === 'en' ? 'es' : 'en'
+  localStorage.setItem('tb-lang', _lang)
+  document.documentElement.lang = _lang
+  applyLang()
+  if (ui.connected) { document.getElementById('connected-content')?.remove(); renderConnected() }
+  else renderConnect(null)
+}
+
+function applyLang() {
+  document.getElementById('lang-en').className = _lang === 'en' ? 'active' : ''
+  document.getElementById('lang-es').className = _lang === 'es' ? 'active' : ''
+  document.getElementById('log-title').textContent = t('activityLog')
+  document.getElementById('log-clear-btn').textContent = t('clear')
+  document.getElementById('test-label').textContent = t('manualTest')
+  var init = document.getElementById('log-init-msg')
+  if (init) init.textContent = t('initMsg')
+  // Refresh status text
+  var st = document.getElementById('status-text')
+  if (st) st.textContent = ui.connected ? t('connected') : ui.connecting ? t('connecting') : t('disconnected')
+}
+
 // ── ESTADO UI ──────────────────────────────────────────────────
 const ui = {
   connected: false, connecting: false,
@@ -253,10 +379,10 @@ function onStatus(d) {
   }
 
   const chip = document.getElementById('status-chip')
-  const text = document.getElementById('status-text')
+  const sText = document.getElementById('status-text')
   const dot  = document.getElementById('brand-dot')
   chip.className = 'status-chip ' + (d.connected ? 'connected' : d.connecting ? 'connecting' : d.error ? 'error' : '')
-  text.textContent = d.connected ? 'CONECTADO' : d.connecting ? 'CONECTANDO…' : d.error ? 'ERROR' : 'DESCONECTADO'
+  sText.textContent = d.connected ? t('connected') : d.connecting ? t('connecting') : d.error ? t('error') : t('disconnected')
   dot.style.background  = d.connected ? 'var(--grn)' : d.connecting ? 'var(--ylw)' : 'var(--red)'
   dot.style.boxShadow   = d.connected ? '0 0 8px var(--grn)' : d.connecting ? '0 0 8px var(--ylw)' : '0 0 8px var(--red)'
 
@@ -279,175 +405,144 @@ function onTally(d) {
 // ── RENDER: CONNECT FORM ───────────────────────────────────────
 function renderConnect(error) {
   const sw = ui.selectedSwitcher
-  const isRGB = sw === 'rgblink'
   const ma = document.getElementById('main-area')
 
   ma.innerHTML = `
     <div class="connect-wrap">
       <div class="connect-header">
-        <div class="connect-eyebrow">CONFIGURACION</div>
-        <div class="connect-title">Conecta tu<br>switcher</div>
-        <p class="connect-sub">TallyBridge corre localmente en tu laptop y envía<br>el tally en tiempo real a TallyComm.</p>
+        <div class="connect-eyebrow">${t('config')}</div>
+        <div class="connect-title">${t('connectTitle')}</div>
+        <p class="connect-sub">${t('connectSub')}</p>
       </div>
 
-      <!-- SWITCHER SELECTOR -->
       <div class="form-card">
         <div class="form-section-label">SWITCHER</div>
         <div class="switch-row">
           <div class="switch-opt ${sw==='obs' ? 'active' : ''}" onclick="selectSwitcher('obs')">
-            <span class="switch-opt-icon">🎬</span>
+            <span class="switch-opt-icon">\ud83c\udfac</span>
             <div class="switch-opt-name">OBS</div>
             <div class="switch-opt-badge">WebSocket v5</div>
           </div>
           <div class="switch-opt ${sw==='atem' ? 'active' : ''}" onclick="selectSwitcher('atem')">
-            <span class="switch-opt-icon">📺</span>
+            <span class="switch-opt-icon">\ud83d\udcfa</span>
             <div class="switch-opt-name">ATEM</div>
-            <div class="switch-opt-badge">${sw==='atem' ? 'SELECCIONADO' : 'Mini / SDI / TV Studio'}</div>
+            <div class="switch-opt-badge">${sw==='atem' ? t('selected') : 'Mini / SDI / TV Studio'}</div>
           </div>
           <div class="switch-opt ${sw==='vmix' ? 'active' : ''}" onclick="selectSwitcher('vmix')">
-            <span class="switch-opt-icon">🎛</span>
+            <span class="switch-opt-icon">\ud83c\udf9b</span>
             <div class="switch-opt-name">vMix</div>
-            <div class="switch-opt-badge">${sw==='vmix' ? 'SELECCIONADO' : 'TCP API'}</div>
+            <div class="switch-opt-badge">${sw==='vmix' ? t('selected') : 'TCP API'}</div>
           </div>
           <div class="switch-opt ${sw==='rgblink' ? 'active-rgb' : ''}" onclick="selectSwitcher('rgblink')">
-            <span class="switch-opt-icon">🔴</span>
+            <span class="switch-opt-icon">\ud83d\udd34</span>
             <div class="switch-opt-name">RGBlink</div>
-            <div class="switch-opt-badge">${sw==='rgblink' ? 'SELECCIONADO' : 'mini / mini-pro'}</div>
+            <div class="switch-opt-badge">${sw==='rgblink' ? t('selected') : 'mini / mini-pro'}</div>
           </div>
         </div>
       </div>
 
-      <!-- SWITCHER FIELDS -->
       <div class="form-card" id="switcher-fields">
         ${sw==='rgblink' ? renderRGBlinkFields() : sw==='atem' ? renderATEMFields() : sw==='vmix' ? renderVMixFields() : renderOBSFields()}
       </div>
 
-      <!-- TALLYCOMM -->
       <div class="form-card">
         <div class="form-section-label">TALLYCOMM</div>
         <div class="field">
-          <span class="field-label">NOMBRE DE SALA</span>
+          <span class="field-label">${t('roomName')}</span>
           <input class="input" type="text" id="tallyRoom"
             value="${ui.savedRoom || ''}"
-            placeholder="ej: show-enero-2026"
+            placeholder="${t('roomPlaceholder')}"
             autocorrect="off" autocapitalize="off" spellcheck="false">
-          <span class="field-hint">El mismo nombre que usan los camarógrafos al entrar</span>
+          <span class="field-hint">${t('roomHint')}</span>
         </div>
         <div class="field">
-          <span class="field-label">URL DEL SERVIDOR</span>
+          <span class="field-label">${t('serverUrl')}</span>
           <input class="input" type="text" id="tallyUrl"
             value="${ui.savedUrl || 'https://tallycomm.com'}"
             placeholder="https://tallycomm.com">
         </div>
       </div>
 
-      ${error ? `<div class="error-msg">⚠ ${error}</div>` : ''}
-      <button class="connect-btn" id="connect-btn" onclick="doConnect()">CONECTAR</button>
+      ${error ? `<div class="error-msg">\u26a0 ${error}</div>` : ''}
+      <button class="connect-btn" id="connect-btn" onclick="doConnect()">${t('connectBtn')}</button>
     </div>`
 
   document.getElementById('test-panel').style.display = 'none'
 }
 
+function _steps(title, steps) {
+  return `<div class="setup-steps"><div class="setup-steps-title">${title}</div>${
+    steps.map((s, i) => `<div class="setup-step"><span class="step-num">${i+1}</span><span class="step-text">${s}</span></div>`).join('')
+  }</div>`
+}
+
 function renderOBSFields() {
   return `
-    <div class="form-section-label">OBS STUDIO</div>
-    <div class="setup-steps">
-      <div class="setup-steps-title">COMO ACTIVAR WEBSOCKET EN OBS</div>
-      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Abre OBS Studio (versión 28 o superior)</span></div>
-      <div class="setup-step"><span class="step-num">2</span><span class="step-text">Ve a <strong>Tools → WebSocket Server Settings</strong></span></div>
-      <div class="setup-step"><span class="step-num">3</span><span class="step-text">Activa <strong>"Enable WebSocket Server"</strong></span></div>
-      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Puerto por defecto: <code>4455</code> — no cambiar a menos que haya conflicto</span></div>
-      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Si activaste contraseña en OBS, ingrésala abajo. Si no, déjalo vacío</span></div>
-      <div class="setup-step"><span class="step-num">6</span><span class="step-text">Click <strong>OK</strong> en OBS y luego <strong>CONECTAR</strong> aquí</span></div>
-    </div>
+    <div class="form-section-label">${t('obsTitle')}</div>
+    ${_steps(t('obsGuide'), [t('obsStep1'), t('obsStep2'), t('obsStep3'), t('obsStep4'), t('obsStep5'), t('obsStep6')])}
     <div class="field">
-      <span class="field-label">HOST / IP</span>
+      <span class="field-label">${t('hostIp')}</span>
       <div class="field-row">
         <input class="input" type="text"   id="obsHost" value="${ui.savedObsHost || '127.0.0.1'}" placeholder="127.0.0.1">
         <input class="input" type="number" id="obsPort" value="${ui.savedObsPort || 4455}" placeholder="4455" style="max-width:100px;">
       </div>
-      <span class="field-hint">127.0.0.1 si OBS corre en esta misma computadora</span>
+      <span class="field-hint">${t('obsHostHint')}</span>
     </div>
     <div class="field">
-      <span class="field-label">PASSWORD (si tiene)</span>
-      <input class="input" type="password" id="obsPassword" placeholder="Dejar vacío si no tiene contraseña">
-    </div>`
-}
-
-function renderRGBlinkFields() {
-  return `
-    <div class="form-section-label">RGBLINK MINI</div>
-    <div class="setup-steps">
-      <div class="setup-steps-title">COMO CONECTAR EL RGBLINK MINI</div>
-      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Conecta el RGBlink mini al router/switch con <strong>cable Ethernet (RJ45)</strong> — no soporta WiFi ni USB para control</span></div>
-      <div class="setup-step"><span class="step-num">2</span><span class="step-text">En el mini, presiona el <strong>botón M</strong> → navega a <strong>SETTING → LAN</strong></span></div>
-      <div class="setup-step"><span class="step-num">3</span><span class="step-text">Activa <strong>DHCP ON</strong> para obtener IP automáticamente, o anota la IP manual (default de fábrica: <code>192.168.0.99</code>)</span></div>
-      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Asegúrate de que esta computadora esté en la <strong>misma red y subnet</strong> que el RGBlink</span></div>
-      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Ingresa la IP abajo y click <strong>CONECTAR</strong> — TallyBridge auto-mapea Input 1 → CAM 1, etc.</span></div>
-    </div>
-    <div class="field">
-      <span class="field-label">IP DEL DISPOSITIVO</span>
-      <input class="input" type="text" id="rgblinkHost"
-        value="${ui.savedRgblinkHost || '192.168.0.99'}"
-        placeholder="192.168.0.99"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
-      <span class="field-hint">IP que aparece en la pantalla del RGBlink mini</span>
-    </div>
-    <div class="field">
-      <span class="field-label">PUERTO UDP</span>
-      <input class="input" type="number" id="rgblinkPort"
-        value="${ui.savedRgblinkPort || 1000}"
-        placeholder="1000"
-        style="max-width:120px;">
-      <span class="field-hint">Puerto por defecto: 1000 — no cambiar a menos que lo hayas modificado en el dispositivo</span>
+      <span class="field-label">${t('password')}</span>
+      <input class="input" type="password" id="obsPassword" placeholder="${t('passwordHint')}">
     </div>`
 }
 
 function renderATEMFields() {
   return `
-    <div class="form-section-label">BLACKMAGIC ATEM</div>
-    <div class="setup-steps">
-      <div class="setup-steps-title">COMO CONECTAR EL ATEM</div>
-      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Conecta el ATEM al router/switch con <strong>cable Ethernet (RJ45)</strong></span></div>
-      <div class="setup-step"><span class="step-num">2</span><span class="step-text">Abre <strong>ATEM Software Control</strong> en tu computadora para verificar la IP del switcher</span></div>
-      <div class="setup-step"><span class="step-num">3</span><span class="step-text">La IP por defecto de fábrica es <code>192.168.10.240</code> — si la cambiaste, usa la IP actual</span></div>
-      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Asegúrate de que esta computadora esté en la <strong>misma red y subnet</strong> que el ATEM</span></div>
-      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Ingresa la IP abajo y click <strong>CONECTAR</strong> — no requiere contraseña ni configuración adicional</span></div>
-    </div>
+    <div class="form-section-label">${t('atemTitle')}</div>
+    ${_steps(t('atemGuide'), [t('atemStep1'), t('atemStep2'), t('atemStep3'), t('atemStep4'), t('atemStep5')])}
     <div class="field">
-      <span class="field-label">IP DEL ATEM</span>
+      <span class="field-label">${t('atemIpLabel')}</span>
       <input class="input" type="text" id="atemHost"
         value="${ui.savedAtemHost || '192.168.10.240'}"
         placeholder="192.168.10.240"
         autocorrect="off" autocapitalize="off" spellcheck="false">
-      <span class="field-hint">IP por defecto: 192.168.10.240 — verificar en ATEM Software Control o en la pantalla del dispositivo</span>
+      <span class="field-hint">${t('atemIpHint')}</span>
     </div>`
 }
 
 function renderVMixFields() {
   return `
-    <div class="form-section-label">VMIX</div>
-    <div class="setup-steps">
-      <div class="setup-steps-title">COMO CONECTAR VMIX</div>
-      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Abre <strong>vMix</strong> en la computadora de producción</span></div>
-      <div class="setup-step"><span class="step-num">2</span><span class="step-text">Ve a <strong>Settings → Web Controller</strong> y verifica que esté <strong>habilitado</strong> (lo está por defecto)</span></div>
-      <div class="setup-step"><span class="step-num">3</span><span class="step-text">El puerto TCP API es siempre <code>8099</code> — es diferente al puerto del Web Controller (8088)</span></div>
-      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Si TallyBridge corre en <strong>otra computadora</strong>, usa la IP de la PC con vMix y verifica que el firewall de Windows permita el puerto 8099</span></div>
-      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Click <strong>CONECTAR</strong> — no requiere contraseña</span></div>
-    </div>
+    <div class="form-section-label">${t('vmixTitle')}</div>
+    ${_steps(t('vmixGuide'), [t('vmixStep1'), t('vmixStep2'), t('vmixStep3'), t('vmixStep4'), t('vmixStep5')])}
     <div class="field">
-      <span class="field-label">HOST / IP</span>
+      <span class="field-label">${t('hostIp')}</span>
       <div class="field-row">
         <input class="input" type="text" id="vmixHost"
-          value="${ui.savedVmixHost || '127.0.0.1'}"
-          placeholder="127.0.0.1"
+          value="${ui.savedVmixHost || '127.0.0.1'}" placeholder="127.0.0.1"
           autocorrect="off" autocapitalize="off" spellcheck="false">
         <input class="input" type="number" id="vmixPort"
-          value="${ui.savedVmixPort || 8099}"
-          placeholder="8099"
+          value="${ui.savedVmixPort || 8099}" placeholder="8099"
           style="max-width:100px;">
       </div>
-      <span class="field-hint">127.0.0.1 si vMix corre en esta misma computadora — puerto siempre 8099</span>
+      <span class="field-hint">${t('vmixHostHint')}</span>
+    </div>`
+}
+
+function renderRGBlinkFields() {
+  return `
+    <div class="form-section-label">${t('rgbTitle')}</div>
+    ${_steps(t('rgbGuide'), [t('rgbStep1'), t('rgbStep2'), t('rgbStep3'), t('rgbStep4'), t('rgbStep5')])}
+    <div class="field">
+      <span class="field-label">${t('rgbIpLabel')}</span>
+      <input class="input" type="text" id="rgblinkHost"
+        value="${ui.savedRgblinkHost || '192.168.0.99'}" placeholder="192.168.0.99"
+        autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span class="field-hint">${t('rgbIpHint')}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">${t('rgbPortLabel')}</span>
+      <input class="input" type="number" id="rgblinkPort"
+        value="${ui.savedRgblinkPort || 1000}" placeholder="1000"
+        style="max-width:120px;">
+      <span class="field-hint">${t('rgbPortHint')}</span>
     </div>`
 }
 
@@ -460,9 +555,12 @@ function selectSwitcher(sw) {
 function renderConnected() {
   const ma = document.getElementById('main-area')
   const swType = window._lastConfig?.switcher || 'obs'
-  const isInputBased = swType !== 'obs'
-  const switcherLabels = { obs: 'OBS', rgblink: 'RGBLINK MINI', atem: 'ATEM', vmix: 'VMIX' }
-  const switcherLabel = '● CONECTADO A ' + (switcherLabels[swType] || 'OBS')
+  const switcherNames = { obs: 'OBS', rgblink: 'RGBLINK MINI', atem: 'ATEM', vmix: 'VMIX' }
+  const switcherLabel = '\u25cf ' + t('connectedTo') + ' ' + (switcherNames[swType] || 'OBS')
+
+  const colLabels = { obs: t('obsColLabel'), rgblink: t('rgbColLabel'), atem: t('atemColLabel'), vmix: t('vmixColLabel') }
+  const mapTitles = { obs: t('obsMapTitle'), rgblink: t('atemMapTitle'), atem: t('atemMapTitle'), vmix: t('atemMapTitle') }
+  const mapHints  = { obs: t('obsMapHint'), rgblink: t('rgbMapHint'), atem: t('atemMapHint'), vmix: t('vmixMapHint') }
 
   if (!document.getElementById('connected-content')) {
     ma.innerHTML = `
@@ -470,33 +568,33 @@ function renderConnected() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div>
             <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--grn);margin-bottom:3px;" id="conn-switcher-label">${switcherLabel}</div>
-            <div style="font-family:var(--sans);font-size:20px;font-weight:700;" id="conn-room-label">Sala: —</div>
+            <div style="font-family:var(--sans);font-size:20px;font-weight:700;" id="conn-room-label">${t('room')}: \u2014</div>
           </div>
-          <button class="disconnect-btn" onclick="doDisconnect()">DESCONECTAR</button>
+          <button class="disconnect-btn" onclick="doDisconnect()">${t('disconnect')}</button>
         </div>
         <div class="tally-monitor">
           <div class="tally-card" id="pgm-card">
             <div class="tally-card-bus">PROGRAM</div>
-            <div class="tally-card-cam" id="pgm-cam">—</div>
-            <div class="tally-card-scene" id="pgm-scene">Sin señal</div>
+            <div class="tally-card-cam" id="pgm-cam">\u2014</div>
+            <div class="tally-card-scene" id="pgm-scene">${t('noSignal')}</div>
           </div>
           <div class="tally-card" id="pvw-card">
             <div class="tally-card-bus">PREVIEW</div>
-            <div class="tally-card-cam" id="pvw-cam">—</div>
-            <div class="tally-card-scene" id="pvw-scene">Sin señal</div>
+            <div class="tally-card-cam" id="pvw-cam">\u2014</div>
+            <div class="tally-card-scene" id="pvw-scene">${t('noSignal')}</div>
           </div>
         </div>
         <div class="section-header">
           <div>
-            <div class="section-title" id="mapping-title">MAPEO DE ENTRADAS → CÁMARAS</div>
-            <div class="section-hint" id="mapping-hint">Asigna cada entrada a una cámara de TallyComm</div>
+            <div class="section-title" id="mapping-title">${mapTitles[swType] || ''}</div>
+            <div class="section-hint" id="mapping-hint">${mapHints[swType] || ''}</div>
           </div>
-          ${swType==='obs' ? '<button class="auto-btn" onclick="autoDetect()">AUTO-DETECTAR</button>' : ''}
+          ${swType==='obs' ? '<button class="auto-btn" onclick="autoDetect()">' + t('autoDetect') + '</button>' : ''}
         </div>
         <table class="scene-table">
           <thead><tr>
-            <th id="col-source">ENTRADA</th>
-            <th>CÁMARA TALLYCOMM</th>
+            <th id="col-source">${colLabels[swType] || 'INPUT'}</th>
+            <th>${t('camTallycomm')}</th>
           </tr></thead>
           <tbody id="scene-tbody"></tbody>
         </table>
@@ -504,27 +602,10 @@ function renderConnected() {
   }
 
   const roomEl = document.getElementById('conn-room-label')
-  if (roomEl) roomEl.textContent = 'Sala: ' + ((window._lastConfig?.tallyRoom) || '—')
+  if (roomEl) roomEl.textContent = t('room') + ': ' + ((window._lastConfig?.tallyRoom) || '\u2014')
 
   const swLabel = document.getElementById('conn-switcher-label')
   if (swLabel) swLabel.textContent = switcherLabel
-
-  // Update column header
-  const colSrc = document.getElementById('col-source')
-  const colLabels = { obs: 'ESCENA OBS', rgblink: 'ENTRADA RGBLINK', atem: 'ENTRADA ATEM', vmix: 'INPUT VMIX' }
-  if (colSrc) colSrc.textContent = colLabels[swType] || 'ENTRADA'
-
-  const mappingTitle = document.getElementById('mapping-title')
-  if (mappingTitle) mappingTitle.textContent = swType === 'obs' ? 'MAPEO DE ESCENAS → CÁMARAS' : 'MAPEO DE ENTRADAS → CÁMARAS'
-
-  const mappingHint = document.getElementById('mapping-hint')
-  const hintLabels = {
-    obs: 'Asigna cada escena de OBS a una cámara de TallyComm',
-    rgblink: 'Input 1 = botón 1 del RGBlink, etc. Auto-mapeado al conectar.',
-    atem: 'Entradas físicas del ATEM. Auto-mapeado al conectar.',
-    vmix: 'Inputs de vMix. Auto-mapeado al conectar.'
-  }
-  if (mappingHint) mappingHint.textContent = hintLabels[swType] || ''
 
   updateTallyCards()
   renderSceneTable()
@@ -543,12 +624,11 @@ function updateTallyCards() {
 
   pgmCard.className = 'tally-card' + (ui.pgmCam ? ' pgm-active' : '')
   pvwCard.className = 'tally-card' + (ui.pvwCam ? ' pvw-active' : '')
-  pgmCamEl.textContent = ui.pgmCam ? 'CAM ' + ui.pgmCam : '—'
-  pvwCamEl.textContent = ui.pvwCam ? 'CAM ' + ui.pvwCam : '—'
+  pgmCamEl.textContent = ui.pgmCam ? 'CAM ' + ui.pgmCam : '\u2014'
+  pvwCamEl.textContent = ui.pvwCam ? 'CAM ' + ui.pvwCam : '\u2014'
 
-  // Display name
-  const pgmDisplay = ui.pgmScene ? (getDisplayName(ui.pgmScene)) : 'Sin señal'
-  const pvwDisplay = ui.pvwScene ? (getDisplayName(ui.pvwScene)) : 'Sin señal'
+  const pgmDisplay = ui.pgmScene ? (getDisplayName(ui.pgmScene)) : t('noSignal')
+  const pvwDisplay = ui.pvwScene ? (getDisplayName(ui.pvwScene)) : t('noSignal')
   pgmSc.textContent = pgmDisplay
   pvwSc.textContent = pvwDisplay
 }
@@ -562,7 +642,7 @@ function renderSceneTable() {
   const tbody = document.getElementById('scene-tbody')
   if (!tbody) return
   if (ui.scenes.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;font-family:var(--mono);font-size:9px;color:var(--txt4);text-align:center;">Esperando datos del switcher…</td></tr>'
+    tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;font-family:var(--mono);font-size:10px;color:var(--txt4);text-align:center;">' + t('waitingSwitcher') + '</td></tr>'
     return
   }
   tbody.innerHTML = ui.scenes.map(s => {
@@ -573,7 +653,7 @@ function renderSceneTable() {
     const isPvw   = name === ui.pvwScene
     const rowCls  = isPgm ? ' pgm-row' : isPvw ? ' pvw-row' : ''
     const badge   = isPgm ? '<span class="scene-badge badge-pgm">PGM</span>' : isPvw ? '<span class="scene-badge badge-pvw">PVW</span>' : ''
-    const opts    = '<option value="0"' + (!cam ? ' selected' : '') + '>— Ignorar</option>' +
+    const opts    = '<option value="0"' + (!cam ? ' selected' : '') + '>\u2014 ' + t('ignore') + '</option>' +
                     [1,2,3,4,5,6].map(n => `<option value="${n}"${cam===n?' selected':''}>CAM ${n}</option>`).join('')
     return `<tr class="scene-row${rowCls}">
       <td class="scene-name-cell">${esc(display)}${badge}</td>
@@ -597,7 +677,7 @@ function renderTestPanel() {
   if (!tg) return
   const activeCams = [...new Set(Object.values(ui.mapping).map(Number).filter(Boolean))].sort()
   if (!activeCams.length) {
-    tg.innerHTML = '<div style="font-family:var(--mono);font-size:8px;color:var(--txt4);grid-column:span 2;">Asigna cámaras para probar</div>'
+    tg.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--txt4);grid-column:span 2;">' + t('assignCams') + '</div>'
     return
   }
   const cam = activeCams[0]
@@ -618,7 +698,7 @@ function flashCard(type) {
 // ── ACCIONES ───────────────────────────────────────────────────
 async function doConnect() {
   const btn = document.getElementById('connect-btn')
-  if (btn) { btn.disabled = true; btn.textContent = 'CONECTANDO…' }
+  if (btn) { btn.disabled = true; btn.textContent = t('connectingBtn') }
 
   const sw  = ui.selectedSwitcher
   const cfg = {
@@ -636,8 +716,8 @@ async function doConnect() {
   }
 
   if (!cfg.tallyRoom) {
-    addLog({ msg: 'Debes ingresar el nombre de sala', type: 'warn', ts: Date.now() })
-    if (btn) { btn.disabled = false; btn.textContent = 'CONECTAR' }
+    addLog({ msg: t('enterRoom'), type: 'warn', ts: Date.now() })
+    if (btn) { btn.disabled = false; btn.textContent = t('connectBtn') }
     return
   }
 
@@ -648,7 +728,7 @@ async function doConnect() {
     body: JSON.stringify(cfg)
   }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }))
 
-  if (!res.ok && btn) { btn.disabled = false; btn.textContent = 'CONECTAR' }
+  if (!res.ok && btn) { btn.disabled = false; btn.textContent = t('connectBtn') }
 }
 
 async function doDisconnect() {
@@ -665,7 +745,7 @@ async function setMapping(sceneName, cameraNumber) {
 }
 
 async function testTally(camera, bus) {
-  addLog({ msg: `Test → cam${camera} ${bus}`, type: 'info', ts: Date.now() })
+  addLog({ msg: `Test \u2192 cam${camera} ${bus}`, type: 'info', ts: Date.now() })
   await fetch('/api/test', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -677,23 +757,23 @@ function autoDetect() {
   let detected = 0
   ui.scenes.forEach(s => {
     const name = s.sceneName
-    const m = name.match(/(?:cam(?:era)?|cámara)[\s\-_#]*(\d+)/i)
+    const m = name.match(/(?:cam(?:era)?|c\u00e1mara)[\s\-_#]*(\d+)/i)
     if (m) {
       const cam = parseInt(m[1])
       if (cam >= 1 && cam <= 6) { ui.mapping[name] = cam; setMapping(name, cam); detected++ }
     }
   })
   renderSceneTable()
-  addLog({ msg: detected ? `Auto-detectadas ${detected} escenas` : 'No se detectaron patrones (ej: "Camera 1", "CAM 2")', type: detected ? 'success' : 'warn', ts: Date.now() })
+  addLog({ msg: detected ? t('obsAutoMsg').replace('%d', detected) : t('obsAutoFail'), type: detected ? 'success' : 'warn', ts: Date.now() })
 }
 
 // ── LOG ────────────────────────────────────────────────────────
 function addLog({ msg, type, ts }) {
   const scroll = document.getElementById('log-scroll')
   if (!scroll) return
-  const t    = new Date(ts)
-  const time = t.toTimeString().split(' ')[0]
-  const icon = type === 'success' ? '✓' : type === 'error' ? '✗' : type === 'warn' ? '!' : '·'
+  const dt   = new Date(ts)
+  const time = dt.toTimeString().split(' ')[0]
+  const icon = type === 'success' ? '\u2713' : type === 'error' ? '\u2717' : type === 'warn' ? '!' : '\u00b7'
   const entry = document.createElement('div')
   entry.className = `log-entry ${type}`
   entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-icon">${icon}</span><span class="log-msg">${msg}</span>`
@@ -708,6 +788,8 @@ function clearLog() {
 }
 
 // ── INIT ───────────────────────────────────────────────────────
+document.documentElement.lang = _lang
+applyLang()
 renderConnect(null)
 </script>
 </body>
