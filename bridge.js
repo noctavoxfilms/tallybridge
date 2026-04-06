@@ -1,5 +1,5 @@
 // ============================================================
-// TallyBridge v1.2 — conecta OBS y RGBlink mini a TallyComm
+// TallyBridge v1.2.2 — conecta OBS y RGBlink mini a TallyComm
 // Protocolo RGBlink: companion-module-rgblink-mini (Bitfocus) — puerto 1000, ASCII commands
 // ============================================================
 'use strict'
@@ -606,7 +606,7 @@ loadSaved()
 app.listen(LISTEN_PORT, '127.0.0.1', () => {
   if (!isElectron) {
     console.log('\n╔════════════════════════════════════╗')
-    console.log('║ TallyBridge v1.2 — TallyComm       ║')
+    console.log('║ TallyBridge v1.2.2 — TallyComm       ║')
     console.log(`║ http://localhost:${LISTEN_PORT}               ║`)
     console.log('╚════════════════════════════════════╝\n')
     const url = `http://localhost:${LISTEN_PORT}`
