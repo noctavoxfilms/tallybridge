@@ -58,10 +58,10 @@ function makeTrayIcon() {
 // ── Create main window ───────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width:           900,
-    height:          620,
-    minWidth:        700,
-    minHeight:       500,
+    width:           1060,
+    height:          760,
+    minWidth:        800,
+    minHeight:       600,
     title:           APP_NAME,
     backgroundColor: '#0d0d0d',
     titleBarStyle:   'default',
