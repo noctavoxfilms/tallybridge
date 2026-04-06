@@ -74,8 +74,6 @@ select.input option{background:#1a1a1a;}
 .switch-opt-badge{font-family:var(--mono);font-size:10px;color:var(--txt4);}
 .switch-opt.active .switch-opt-badge{color:var(--blu);}
 .switch-opt.active-rgb .switch-opt-badge{color:var(--red);}
-.switch-opt.soon .switch-opt-name{color:var(--txt4);}
-.switch-opt.soon{cursor:not-allowed;opacity:.5;}
 
 /* SETUP STEPS */
 .setup-steps{background:var(--bg);border:1px solid var(--b1);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;}
@@ -245,6 +243,9 @@ function onStatus(d) {
     if (d.savedConfig.obsPort)     ui.savedObsPort     = d.savedConfig.obsPort
     if (d.savedConfig.rgblinkHost) ui.savedRgblinkHost = d.savedConfig.rgblinkHost
     if (d.savedConfig.rgblinkPort) ui.savedRgblinkPort = d.savedConfig.rgblinkPort
+    if (d.savedConfig.atemHost)    ui.savedAtemHost    = d.savedConfig.atemHost
+    if (d.savedConfig.vmixHost)    ui.savedVmixHost    = d.savedConfig.vmixHost
+    if (d.savedConfig.vmixPort)    ui.savedVmixPort    = d.savedConfig.vmixPort
     if (d.savedConfig.tallyUrl)    ui.savedUrl         = d.savedConfig.tallyUrl
     if (d.savedConfig.tallyRoom)   ui.savedRoom        = d.savedConfig.tallyRoom
     if (d.savedConfig.switcher)    ui.selectedSwitcher = d.savedConfig.switcher
@@ -298,15 +299,15 @@ function renderConnect(error) {
             <div class="switch-opt-name">OBS</div>
             <div class="switch-opt-badge">WebSocket v5</div>
           </div>
-          <div class="switch-opt soon">
+          <div class="switch-opt ${sw==='atem' ? 'active' : ''}" onclick="selectSwitcher('atem')">
             <span class="switch-opt-icon">📺</span>
             <div class="switch-opt-name">ATEM</div>
-            <div class="switch-opt-badge">Próximamente</div>
+            <div class="switch-opt-badge">${sw==='atem' ? 'SELECCIONADO' : 'Mini / SDI / TV Studio'}</div>
           </div>
-          <div class="switch-opt soon">
+          <div class="switch-opt ${sw==='vmix' ? 'active' : ''}" onclick="selectSwitcher('vmix')">
             <span class="switch-opt-icon">🎛</span>
             <div class="switch-opt-name">vMix</div>
-            <div class="switch-opt-badge">Próximamente</div>
+            <div class="switch-opt-badge">${sw==='vmix' ? 'SELECCIONADO' : 'TCP API'}</div>
           </div>
           <div class="switch-opt ${sw==='rgblink' ? 'active-rgb' : ''}" onclick="selectSwitcher('rgblink')">
             <span class="switch-opt-icon">🔴</span>
@@ -318,7 +319,7 @@ function renderConnect(error) {
 
       <!-- SWITCHER FIELDS -->
       <div class="form-card" id="switcher-fields">
-        ${isRGB ? renderRGBlinkFields() : renderOBSFields()}
+        ${sw==='rgblink' ? renderRGBlinkFields() : sw==='atem' ? renderATEMFields() : sw==='vmix' ? renderVMixFields() : renderOBSFields()}
       </div>
 
       <!-- TALLYCOMM -->
@@ -402,6 +403,54 @@ function renderRGBlinkFields() {
     </div>`
 }
 
+function renderATEMFields() {
+  return `
+    <div class="form-section-label">BLACKMAGIC ATEM</div>
+    <div class="setup-steps">
+      <div class="setup-steps-title">COMO CONECTAR EL ATEM</div>
+      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Conecta el ATEM al router/switch con <strong>cable Ethernet (RJ45)</strong></span></div>
+      <div class="setup-step"><span class="step-num">2</span><span class="step-text">Abre <strong>ATEM Software Control</strong> en tu computadora para verificar la IP del switcher</span></div>
+      <div class="setup-step"><span class="step-num">3</span><span class="step-text">La IP por defecto de fábrica es <code>192.168.10.240</code> — si la cambiaste, usa la IP actual</span></div>
+      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Asegúrate de que esta computadora esté en la <strong>misma red y subnet</strong> que el ATEM</span></div>
+      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Ingresa la IP abajo y click <strong>CONECTAR</strong> — no requiere contraseña ni configuración adicional</span></div>
+    </div>
+    <div class="field">
+      <span class="field-label">IP DEL ATEM</span>
+      <input class="input" type="text" id="atemHost"
+        value="${ui.savedAtemHost || '192.168.10.240'}"
+        placeholder="192.168.10.240"
+        autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span class="field-hint">IP por defecto: 192.168.10.240 — verificar en ATEM Software Control o en la pantalla del dispositivo</span>
+    </div>`
+}
+
+function renderVMixFields() {
+  return `
+    <div class="form-section-label">VMIX</div>
+    <div class="setup-steps">
+      <div class="setup-steps-title">COMO CONECTAR VMIX</div>
+      <div class="setup-step"><span class="step-num">1</span><span class="step-text">Abre <strong>vMix</strong> en la computadora de producción</span></div>
+      <div class="setup-step"><span class="step-num">2</span><span class="step-text">Ve a <strong>Settings → Web Controller</strong> y verifica que esté <strong>habilitado</strong> (lo está por defecto)</span></div>
+      <div class="setup-step"><span class="step-num">3</span><span class="step-text">El puerto TCP API es siempre <code>8099</code> — es diferente al puerto del Web Controller (8088)</span></div>
+      <div class="setup-step"><span class="step-num">4</span><span class="step-text">Si TallyBridge corre en <strong>otra computadora</strong>, usa la IP de la PC con vMix y verifica que el firewall de Windows permita el puerto 8099</span></div>
+      <div class="setup-step"><span class="step-num">5</span><span class="step-text">Click <strong>CONECTAR</strong> — no requiere contraseña</span></div>
+    </div>
+    <div class="field">
+      <span class="field-label">HOST / IP</span>
+      <div class="field-row">
+        <input class="input" type="text" id="vmixHost"
+          value="${ui.savedVmixHost || '127.0.0.1'}"
+          placeholder="127.0.0.1"
+          autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input class="input" type="number" id="vmixPort"
+          value="${ui.savedVmixPort || 8099}"
+          placeholder="8099"
+          style="max-width:100px;">
+      </div>
+      <span class="field-hint">127.0.0.1 si vMix corre en esta misma computadora — puerto siempre 8099</span>
+    </div>`
+}
+
 function selectSwitcher(sw) {
   ui.selectedSwitcher = sw
   renderConnect(null)
@@ -410,9 +459,10 @@ function selectSwitcher(sw) {
 // ── RENDER: CONNECTED ──────────────────────────────────────────
 function renderConnected() {
   const ma = document.getElementById('main-area')
-  const isRGB = (window._lastConfig?.switcher === 'rgblink') ||
-                ui.scenes.some(s => s.sceneName?.startsWith('input_'))
-  const switcherLabel = isRGB ? '● CONECTADO A RGBLINK MINI' : '● CONECTADO A OBS'
+  const swType = window._lastConfig?.switcher || 'obs'
+  const isInputBased = swType !== 'obs'
+  const switcherLabels = { obs: 'OBS', rgblink: 'RGBLINK MINI', atem: 'ATEM', vmix: 'VMIX' }
+  const switcherLabel = '● CONECTADO A ' + (switcherLabels[swType] || 'OBS')
 
   if (!document.getElementById('connected-content')) {
     ma.innerHTML = `
@@ -441,7 +491,7 @@ function renderConnected() {
             <div class="section-title" id="mapping-title">MAPEO DE ENTRADAS → CÁMARAS</div>
             <div class="section-hint" id="mapping-hint">Asigna cada entrada a una cámara de TallyComm</div>
           </div>
-          ${isRGB ? '' : '<button class="auto-btn" onclick="autoDetect()">AUTO-DETECTAR</button>'}
+          ${swType==='obs' ? '<button class="auto-btn" onclick="autoDetect()">AUTO-DETECTAR</button>' : ''}
         </div>
         <table class="scene-table">
           <thead><tr>
@@ -461,15 +511,20 @@ function renderConnected() {
 
   // Update column header
   const colSrc = document.getElementById('col-source')
-  if (colSrc) colSrc.textContent = isRGB ? 'ENTRADA RGBLINK' : 'ESCENA OBS'
+  const colLabels = { obs: 'ESCENA OBS', rgblink: 'ENTRADA RGBLINK', atem: 'ENTRADA ATEM', vmix: 'INPUT VMIX' }
+  if (colSrc) colSrc.textContent = colLabels[swType] || 'ENTRADA'
 
   const mappingTitle = document.getElementById('mapping-title')
-  if (mappingTitle) mappingTitle.textContent = isRGB ? 'MAPEO DE ENTRADAS → CÁMARAS' : 'MAPEO DE ESCENAS → CÁMARAS'
+  if (mappingTitle) mappingTitle.textContent = swType === 'obs' ? 'MAPEO DE ESCENAS → CÁMARAS' : 'MAPEO DE ENTRADAS → CÁMARAS'
 
   const mappingHint = document.getElementById('mapping-hint')
-  if (mappingHint) mappingHint.textContent = isRGB
-    ? 'Input 1 = botón 1 del RGBlink, etc. Auto-mapeado al conectar.'
-    : 'Asigna cada escena de OBS a una cámara de TallyComm'
+  const hintLabels = {
+    obs: 'Asigna cada escena de OBS a una cámara de TallyComm',
+    rgblink: 'Input 1 = botón 1 del RGBlink, etc. Auto-mapeado al conectar.',
+    atem: 'Entradas físicas del ATEM. Auto-mapeado al conectar.',
+    vmix: 'Inputs de vMix. Auto-mapeado al conectar.'
+  }
+  if (mappingHint) mappingHint.textContent = hintLabels[swType] || ''
 
   updateTallyCards()
   renderSceneTable()
@@ -572,7 +627,10 @@ async function doConnect() {
     obsPort:     document.getElementById('obsPort')?.value            || '4455',
     obsPassword: document.getElementById('obsPassword')?.value        || '',
     rgblinkHost: document.getElementById('rgblinkHost')?.value.trim() || '192.168.0.99',
-    rgblinkPort: document.getElementById('rgblinkPort')?.value        || '4001',
+    rgblinkPort: document.getElementById('rgblinkPort')?.value        || '1000',
+    atemHost:    document.getElementById('atemHost')?.value.trim()    || '192.168.10.240',
+    vmixHost:    document.getElementById('vmixHost')?.value.trim()    || '127.0.0.1',
+    vmixPort:    document.getElementById('vmixPort')?.value           || '8099',
     tallyRoom:   document.getElementById('tallyRoom')?.value.trim()   || '',
     tallyUrl:    document.getElementById('tallyUrl')?.value.trim()    || 'https://tallycomm.com'
   }

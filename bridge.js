@@ -1,15 +1,16 @@
 // ============================================================
-// TallyBridge v1.2.3 — conecta OBS y RGBlink mini a TallyComm
-// Protocolo RGBlink: companion-module-rgblink-mini (Bitfocus) — puerto 1000, ASCII commands
+// TallyBridge v1.2.3 — conecta OBS, ATEM, vMix y RGBlink mini a TallyComm
 // ============================================================
 'use strict'
 const express   = require('express')
 const WebSocket = require('ws')
+const net       = require('net')
 const dgram     = require('dgram')
 const crypto    = require('crypto')
 const path      = require('path')
 const fs        = require('fs')
 const { execSync } = require('child_process')
+const { Atem }  = require('atem-connection')
 
 const app  = express()
 const PORT = 4000
@@ -62,6 +63,9 @@ const state = {
     obsPassword:   '',
     rgblinkHost:   '192.168.0.99',
     rgblinkPort:   1000,
+    atemHost:      '192.168.10.240',
+    vmixHost:      '127.0.0.1',
+    vmixPort:      8099,
     tallyUrl:      'https://tallycomm.com',
     tallyRoom:     ''
   },
@@ -276,17 +280,337 @@ function handleRGBlinkMessage(buf) {
   log(`RGBlink: paquete de longitud inesperada (${buf.length} bytes) — ignorado`, 'warn')
 }
 
-// ── Auto-reconnect OBS ─────────────────────────────────────────
+// ── ATEM (UDP port 9910 via atem-connection) ───────────────────
+let atemConnection = null
+
+function atemConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error = null
+    sse('status', statusPayload())
+
+    const host = cfg.atemHost || '192.168.10.240'
+    log(`Conectando a ATEM en ${host}:9910…`)
+
+    const atem = new Atem()
+    atemConnection = atem
+
+    let resolved = false
+    const connTimeout = setTimeout(() => {
+      if (resolved) return
+      resolved = true
+      atem.destroy().catch(() => {})
+      atemConnection = null
+      state.connecting = false
+      state.connected = false
+      state.error = 'Timeout al conectar a ATEM (10s)'
+      sse('status', statusPayload())
+      reject(new Error(state.error))
+    }, 10000)
+
+    atem.on('error', (e) => {
+      log(`ATEM error: ${e}`, 'error')
+      if (!resolved) {
+        resolved = true
+        clearTimeout(connTimeout)
+        state.connecting = false
+        state.connected = false
+        state.error = String(e)
+        atemConnection = null
+        sse('status', statusPayload())
+        reject(new Error(String(e)))
+      }
+    })
+
+    atem.on('connected', () => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(connTimeout)
+
+      state.connected = true
+      state.connecting = false
+      const model = atem.state.info.productIdentifier || 'ATEM'
+      log(`Conectado a ${model} ✓`, 'success')
+
+      // Build scene list from external inputs
+      const inputs = atem.state.inputs || {}
+      state.scenes = []
+      for (const [id, input] of Object.entries(inputs)) {
+        if (input && input.internalPortType === 0) {
+          state.scenes.push({
+            sceneName: `input_${id}`,
+            displayName: input.longName || `Input ${id}`,
+            inputId: parseInt(id)
+          })
+        }
+      }
+      state.scenes.sort((a, b) => a.inputId - b.inputId)
+
+      // Auto-map input N → cam N
+      let autoMapped = 0
+      state.scenes.forEach(s => {
+        if (!state.mapping[s.sceneName]) {
+          state.mapping[s.sceneName] = s.inputId
+          autoMapped++
+        }
+      })
+      if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+
+      // Read initial tally
+      const me0 = atem.state.video.mixEffects[0]
+      if (me0) {
+        state.pgmScene = `input_${me0.programInput}`
+        state.pvwScene = `input_${me0.previewInput}`
+        const pgmCam = state.mapping[state.pgmScene] || 0
+        const pvwCam = state.mapping[state.pvwScene] || 0
+        if (pgmCam) sendTallyDirect(pgmCam, 'program')
+        if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
+      }
+
+      sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+      sse('status', statusPayload())
+      resolve()
+    })
+
+    atem.on('disconnected', () => {
+      if (state.connected) {
+        state.connected = false
+        log('ATEM desconectado', 'warn')
+        sse('status', statusPayload())
+        if (!manualDisconnect) scheduleReconnect()
+      }
+    })
+
+    atem.on('stateChanged', (newState, paths) => {
+      for (const p of paths) {
+        if (p === 'video.mixEffects.0.programInput') {
+          const me = newState.video.mixEffects[0]
+          if (!me) continue
+          const prev = state.pgmScene
+          const next = `input_${me.programInput}`
+          log(`PGM → Input ${me.programInput}`)
+          const prevCam = state.mapping[prev] || 0
+          const pvwCam  = state.mapping[state.pvwScene] || 0
+          if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
+          state.pgmScene = next
+          const newCam = state.mapping[next] || 0
+          if (newCam) sendTallyDirect(newCam, 'program')
+          sse('status', statusPayload())
+        }
+        if (p === 'video.mixEffects.0.previewInput') {
+          const me = newState.video.mixEffects[0]
+          if (!me) continue
+          const prev = state.pvwScene
+          const next = `input_${me.previewInput}`
+          log(`PVW → Input ${me.previewInput}`)
+          const prevCam = state.mapping[prev] || 0
+          const pgmCam  = state.mapping[state.pgmScene] || 0
+          if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
+          state.pvwScene = next
+          const newCam = state.mapping[next] || 0
+          if (newCam && newCam !== pgmCam) sendTallyDirect(newCam, 'preview')
+          sse('status', statusPayload())
+        }
+      }
+    })
+
+    atem.connect(host).catch((e) => {
+      if (!resolved) {
+        resolved = true
+        clearTimeout(connTimeout)
+        state.connecting = false
+        state.error = e.message
+        sse('status', statusPayload())
+        reject(e)
+      }
+    })
+  })
+}
+
+function atemDisconnect() {
+  if (atemConnection) {
+    atemConnection.disconnect().catch(() => {})
+    atemConnection.destroy().catch(() => {})
+    atemConnection = null
+  }
+}
+
+// ── vMix (TCP port 8099, text protocol) ────────────────────────
+let vmixSocket = null
+let vmixBuffer = ''
+
+function vmixConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error = null
+    sse('status', statusPayload())
+
+    const host = cfg.vmixHost || '127.0.0.1'
+    const port = parseInt(cfg.vmixPort) || 8099
+    log(`Conectando a vMix en ${host}:${port}…`)
+
+    const sock = new net.Socket()
+    vmixSocket = sock
+    vmixBuffer = ''
+    let resolved = false
+
+    const failWith = (err) => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(connTimeout)
+      try { sock.destroy() } catch {}
+      vmixSocket = null
+      state.connected = false
+      state.connecting = false
+      state.error = err.message
+      sse('status', statusPayload())
+      reject(err)
+    }
+
+    const connTimeout = setTimeout(() => {
+      sock.destroy()
+      failWith(new Error('Timeout al conectar a vMix (5s)'))
+    }, 5000)
+
+    sock.connect(port, host, () => {
+      clearTimeout(connTimeout)
+      resolved = true
+      state.connected = true
+      state.connecting = false
+      log('Conectado a vMix ✓', 'success')
+
+      // Build generic input list (vMix can have many inputs)
+      state.scenes = Array.from({ length: 8 }, (_, i) => ({
+        sceneName:   `input_${i + 1}`,
+        displayName: `Input ${i + 1}`
+      }))
+      let autoMapped = 0
+      state.scenes.forEach((s, i) => {
+        if (!state.mapping[s.sceneName]) {
+          state.mapping[s.sceneName] = i + 1
+          autoMapped++
+        }
+      })
+      if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+      sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+      sse('status', statusPayload())
+
+      // Subscribe to tally — vMix pushes updates automatically
+      sock.write('SUBSCRIBE TALLY\r\n')
+      resolve()
+    })
+
+    sock.on('data', (data) => {
+      vmixBuffer += data.toString('utf8')
+      _processVmixBuffer()
+    })
+
+    sock.on('error', (err) => {
+      if (!resolved) failWith(err)
+      else {
+        log('vMix error: ' + err.message, 'warn')
+        state.connected = false
+        sse('status', statusPayload())
+      }
+    })
+
+    sock.on('close', () => {
+      if (!resolved) failWith(new Error('Conexión cerrada'))
+      else if (state.connected) {
+        state.connected = false
+        log('vMix desconectado', 'warn')
+        sse('status', statusPayload())
+        if (!manualDisconnect) scheduleReconnect()
+      }
+    })
+  })
+}
+
+function _processVmixBuffer() {
+  let idx
+  while ((idx = vmixBuffer.indexOf('\r\n')) !== -1) {
+    const line = vmixBuffer.substring(0, idx)
+    vmixBuffer = vmixBuffer.substring(idx + 2)
+
+    if (line.startsWith('TALLY OK ')) {
+      _handleVmixTally(line.substring(9))
+    } else if (line.startsWith('SUBSCRIBE OK')) {
+      log('vMix: suscripción a tally activa ✓', 'success')
+    }
+  }
+}
+
+function _handleVmixTally(tallyStr) {
+  // Each char = 1 input: 0=off, 1=PGM, 2=PVW
+  let newPgm = null, newPvw = null
+  for (let i = 0; i < tallyStr.length; i++) {
+    if (tallyStr[i] === '1') newPgm = i + 1
+    if (tallyStr[i] === '2') newPvw = i + 1
+  }
+
+  const pgmKey = newPgm ? `input_${newPgm}` : null
+  const pvwKey = newPvw ? `input_${newPvw}` : null
+
+  // Expand scene list if vMix has more inputs than expected
+  const maxInput = tallyStr.length
+  if (maxInput > state.scenes.length) {
+    state.scenes = Array.from({ length: maxInput }, (_, i) => ({
+      sceneName:   `input_${i + 1}`,
+      displayName: `Input ${i + 1}`
+    }))
+    sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+  }
+
+  log(`vMix tally → PGM: ${newPgm || '--'}  PVW: ${newPvw || '--'}`)
+
+  const prevPgm = state.pgmScene
+  const prevPvw = state.pvwScene
+
+  if (prevPgm && prevPgm !== pgmKey) {
+    const prevCam = state.mapping[prevPgm] || 0
+    const pvwCam  = state.mapping[pvwKey]  || 0
+    if (prevCam && prevCam !== pvwCam) sendTallyDirect(prevCam, 'clear')
+  }
+  if (prevPvw && prevPvw !== pvwKey && prevPvw !== pgmKey) {
+    const prevCam = state.mapping[prevPvw] || 0
+    const pgmCam  = state.mapping[pgmKey]  || 0
+    if (prevCam && prevCam !== pgmCam) sendTallyDirect(prevCam, 'clear')
+  }
+
+  state.pgmScene = pgmKey
+  state.pvwScene = pvwKey
+
+  const pgmCam = pgmKey ? (state.mapping[pgmKey] || 0) : 0
+  const pvwCam = pvwKey ? (state.mapping[pvwKey] || 0) : 0
+
+  if (pgmCam) sendTallyDirect(pgmCam, 'program')
+  if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
+
+  sse('status', statusPayload())
+}
+
+function vmixDisconnect() {
+  if (vmixSocket) {
+    try { vmixSocket.write('UNSUBSCRIBE TALLY\r\n') } catch {}
+    try { vmixSocket.destroy() } catch {}
+    vmixSocket = null
+  }
+}
+
+// ── Auto-reconnect ─────────────────────────────────────────────
 function scheduleReconnect(delay = 4000) {
   if (reconnectTimer) return
   if (!state.config.tallyRoom) return
-  log(`Reconectando en ${delay / 1000}s…`, 'warn')
+  const sw = state.config.switcher || 'obs'
+  log(`Reconectando a ${sw} en ${delay / 1000}s…`, 'warn')
   reconnectTimer = setTimeout(async () => {
     reconnectTimer = null
     if (state.connected || manualDisconnect) return
-    log('Intentando reconectar a OBS…')
     try {
-      await obsConnect(state.config)
+      if (sw === 'atem') await atemConnect(state.config)
+      else if (sw === 'vmix') await vmixConnect(state.config)
+      else if (sw === 'rgblink') await rgblinkConnect(state.config)
+      else await obsConnect(state.config)
     } catch (e) {
       log('Reconexión fallida: ' + e.message, 'warn')
       scheduleReconnect(Math.min(delay * 2, 30000))
@@ -522,7 +846,7 @@ app.get('/events', (req, res) => {
 })
 
 app.post('/api/connect', async (req, res) => {
-  const { obsHost, obsPort, obsPassword, rgblinkHost, rgblinkPort, tallyUrl, tallyRoom, switcher } = req.body
+  const { obsHost, obsPort, obsPassword, rgblinkHost, rgblinkPort, atemHost, vmixHost, vmixPort, tallyUrl, tallyRoom, switcher } = req.body
 
   state.config = {
     switcher:    switcher || 'obs',
@@ -531,6 +855,9 @@ app.post('/api/connect', async (req, res) => {
     obsPassword: obsPassword || '',
     rgblinkHost: rgblinkHost || '192.168.0.99',
     rgblinkPort: parseInt(rgblinkPort) || RGBLINK_PORT,
+    atemHost:    atemHost    || '192.168.10.240',
+    vmixHost:    vmixHost    || '127.0.0.1',
+    vmixPort:    parseInt(vmixPort) || 8099,
     tallyUrl:    tallyUrl    || 'https://tallycomm.com',
     tallyRoom:   tallyRoom   || ''
   }
@@ -541,15 +868,16 @@ app.post('/api/connect', async (req, res) => {
   // Desconectar lo que esté activo
   if (obsSocket) { try { obsSocket.terminate() } catch {}; obsSocket = null }
   rgblinkDisconnect()
+  atemDisconnect()
+  vmixDisconnect()
 
   Object.assign(state, { connected: false, connecting: false, error: null, scenes: [], pgmScene: null, pvwScene: null })
 
   try {
-    if (switcher === 'rgblink') {
-      await rgblinkConnect(state.config)
-    } else {
-      await obsConnect(state.config)
-    }
+    if (switcher === 'atem')         await atemConnect(state.config)
+    else if (switcher === 'vmix')    await vmixConnect(state.config)
+    else if (switcher === 'rgblink') await rgblinkConnect(state.config)
+    else                             await obsConnect(state.config)
     saveToDisk()
     res.json({ ok: true })
   } catch (e) {
@@ -562,6 +890,8 @@ app.post('/api/disconnect', (req, res) => {
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   if (obsSocket) { try { obsSocket.terminate() } catch {}; obsSocket = null }
   rgblinkDisconnect()
+  atemDisconnect()
+  vmixDisconnect()
   Object.assign(state, { connected: false, connecting: false, scenes: [], pgmScene: null, pvwScene: null })
   sse('status', statusPayload())
   log('Desconectado manualmente', 'warn')
@@ -591,6 +921,9 @@ app.get('/api/status', (req, res) => res.json({
     obsPort:     state.config.obsPort,
     rgblinkHost: state.config.rgblinkHost,
     rgblinkPort: state.config.rgblinkPort,
+    atemHost:    state.config.atemHost,
+    vmixHost:    state.config.vmixHost,
+    vmixPort:    state.config.vmixPort,
     tallyUrl:    state.config.tallyUrl,
     tallyRoom:   state.config.tallyRoom,
     switcher:    state.config.switcher
