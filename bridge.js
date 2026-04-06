@@ -1,5 +1,5 @@
 // ============================================================
-// TallyBridge v1.2.3 — conecta OBS, ATEM, vMix y RGBlink mini a TallyComm
+// TallyBridge v1.3.0 — conecta OBS, ATEM, vMix y RGBlink mini a TallyComm
 // ============================================================
 'use strict'
 const express   = require('express')
@@ -939,7 +939,7 @@ loadSaved()
 app.listen(LISTEN_PORT, '127.0.0.1', () => {
   if (!isElectron) {
     console.log('\n╔════════════════════════════════════╗')
-    console.log('║ TallyBridge v1.2.3 — TallyComm       ║')
+    console.log('║ TallyBridge v1.3.0 — TallyComm       ║')
     console.log(`║ http://localhost:${LISTEN_PORT}               ║`)
     console.log('╚════════════════════════════════════╝\n')
     const url = `http://localhost:${LISTEN_PORT}`
