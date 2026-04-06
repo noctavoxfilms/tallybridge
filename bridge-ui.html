@@ -31,7 +31,7 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .brand-name{font-size:20px;font-weight:900;letter-spacing:.2em;}
 .brand-name em{color:var(--red);font-style:normal;}
 .brand-ver{font-family:var(--mono);font-size:10px;color:var(--txt4);margin-top:1px;}
-.status-chip{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;border:1px solid var(--b2);background:var(--s2);color:var(--txt3);transition:all .2s;}
+.status-chip{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;border:1px solid var(--b2);background:var(--s2);color:var(--txt3);transition:all .2s;}
 .status-chip.connecting{border-color:var(--ylw);color:var(--ylw);background:var(--ylw-bg);}
 .status-chip.connected{border-color:var(--grn);color:var(--grn);background:var(--grn-bg);}
 .status-chip.error{border-color:var(--red);color:var(--red);background:var(--red-bg);}
@@ -45,16 +45,16 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 /* CONNECT FORM */
 .connect-wrap{max-width:560px;margin:40px auto;padding:0 20px;}
 .connect-header{margin-bottom:28px;}
-.connect-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.2em;color:var(--red);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.connect-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--red);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .connect-eyebrow::before{content:'';width:20px;height:1px;background:var(--red);}
 .connect-title{font-size:32px;font-weight:900;line-height:1.1;margin-bottom:8px;}
 .connect-sub{font-family:var(--mono);font-size:12px;color:var(--txt3);line-height:1.7;}
 .form-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);padding:20px;margin-bottom:14px;}
-.form-section-label{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--txt4);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.form-section-label{font-family:var(--mono);font-size:12px;letter-spacing:.15em;color:var(--txt3);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 .form-section-label::after{content:'';flex:1;height:1px;background:var(--b1);}
 .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;}
 .field:last-child{margin-bottom:0;}
-.field-label{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--txt3);}
+.field-label{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--txt2);}
 .field-row{display:flex;gap:8px;}
 .field-row .input{flex:1;}
 input.input,select.input{background:var(--bg);border:1px solid var(--b2);border-radius:var(--radius);padding:10px 12px;color:var(--txt);font-family:var(--mono);font-size:13px;outline:none;width:100%;transition:border-color .12s;-webkit-user-select:text;user-select:text;}
@@ -69,9 +69,9 @@ select.input option{background:#1a1a1a;}
 .switch-opt.active{background:var(--blu-bg);border-color:var(--blu);}
 .switch-opt.active-rgb{background:rgba(255,59,59,.08);border-color:var(--red);}
 .switch-opt-icon{font-size:18px;display:block;margin-bottom:3px;}
-.switch-opt-name{font-family:var(--sans);font-size:13px;font-weight:700;color:var(--txt2);}
+.switch-opt-name{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--txt2);}
 .switch-opt.active .switch-opt-name,.switch-opt.active-rgb .switch-opt-name{color:var(--txt);}
-.switch-opt-badge{font-family:var(--mono);font-size:9px;color:var(--txt4);}
+.switch-opt-badge{font-family:var(--mono);font-size:10px;color:var(--txt4);}
 .switch-opt.active .switch-opt-badge{color:var(--blu);}
 .switch-opt.active-rgb .switch-opt-badge{color:var(--red);}
 .switch-opt.soon .switch-opt-name{color:var(--txt4);}
@@ -79,7 +79,7 @@ select.input option{background:#1a1a1a;}
 
 /* SETUP STEPS */
 .setup-steps{background:var(--bg);border:1px solid var(--b1);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;}
-.setup-steps-title{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--txt3);margin-bottom:10px;}
+.setup-steps-title{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--txt2);margin-bottom:10px;}
 .setup-step{display:flex;gap:10px;margin-bottom:8px;align-items:flex-start;}
 .setup-step:last-child{margin-bottom:0;}
 .step-num{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--blu);flex-shrink:0;width:18px;text-align:center;}
@@ -88,7 +88,7 @@ select.input option{background:#1a1a1a;}
 .step-text code{font-family:var(--mono);font-size:11px;background:var(--s2);padding:1px 5px;border-radius:2px;color:var(--blu);}
 
 /* FIELD HINT */
-.field-hint{font-family:var(--mono);font-size:10px;color:var(--txt4);}
+.field-hint{font-family:var(--mono);font-size:10px;color:var(--txt3);}
 
 /* CONNECT BUTTON */
 .connect-btn{width:100%;padding:14px;background:var(--red);border:none;border-radius:var(--radius);color:#fff;font-family:var(--sans);font-size:17px;font-weight:700;letter-spacing:.12em;cursor:pointer;transition:opacity .15s;margin-top:4px;}
@@ -143,7 +143,7 @@ select.input option{background:#1a1a1a;}
 .disconnect-btn:hover{border-color:var(--red);color:var(--red);}
 
 /* SIDEBAR LOG */
-.sidebar-header{padding:12px 14px;border-bottom:1px solid var(--b1);font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--txt4);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.sidebar-header{padding:12px 14px;border-bottom:1px solid var(--b1);font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--txt4);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .clear-log{padding:3px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:2px;color:var(--txt4);font-family:var(--mono);font-size:9px;cursor:pointer;transition:all .1s;}
 .clear-log:hover{color:var(--txt3);}
 .log-scroll{flex:1;overflow-y:auto;padding:8px;}
@@ -419,7 +419,7 @@ function renderConnected() {
       <div class="connected-wrap" id="connected-content">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div>
-            <div style="font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--grn);margin-bottom:3px;" id="conn-switcher-label">${switcherLabel}</div>
+            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--grn);margin-bottom:3px;" id="conn-switcher-label">${switcherLabel}</div>
             <div style="font-family:var(--sans);font-size:20px;font-weight:700;" id="conn-room-label">Sala: —</div>
           </div>
           <button class="disconnect-btn" onclick="doDisconnect()">DESCONECTAR</button>
