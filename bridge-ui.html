@@ -244,6 +244,9 @@ var _i = {
   roomPlaceholder:  { en: 'e.g.: show-jan-2026', es: 'ej: show-enero-2026' },
   roomHint:         { en: 'Same room name used by camera operators', es: 'El mismo nombre que usan los camar\u00f3grafos al entrar' },
   serverUrl:        { en: 'SERVER URL',      es: 'URL DEL SERVIDOR' },
+  apiKey:           { en: 'API KEY (optional)', es: 'API KEY (opcional)' },
+  apiKeyPlaceholder:{ en: 'Leave empty if server does not require it', es: 'Dejar vac\u00edo si el servidor no la requiere' },
+  apiKeyHint:       { en: 'Ask the TallyComm admin if TALLY_SECRET is set', es: 'Pide la clave al admin si el servidor tiene TALLY_SECRET' },
   hostIp:           { en: 'HOST / IP',       es: 'HOST / IP' },
   password:         { en: 'PASSWORD (if set)', es: 'PASSWORD (si tiene)' },
   passwordHint:     { en: 'Leave empty if no password', es: 'Dejar vac\u00edo si no tiene contrase\u00f1a' },
@@ -374,6 +377,7 @@ function onStatus(d) {
     if (d.savedConfig.vmixPort)    ui.savedVmixPort    = d.savedConfig.vmixPort
     if (d.savedConfig.tallyUrl)    ui.savedUrl         = d.savedConfig.tallyUrl
     if (d.savedConfig.tallyRoom)   ui.savedRoom        = d.savedConfig.tallyRoom
+    if (d.savedConfig.tallyApiKey) ui.savedApiKey      = d.savedConfig.tallyApiKey
     if (d.savedConfig.switcher)    ui.selectedSwitcher = d.savedConfig.switcher
     window._lastConfig = d.savedConfig
   }
@@ -460,6 +464,14 @@ function renderConnect(error) {
           <input class="input" type="text" id="tallyUrl"
             value="${ui.savedUrl || 'https://tallycomm.com'}"
             placeholder="https://tallycomm.com">
+        </div>
+        <div class="field">
+          <span class="field-label">${t('apiKey')}</span>
+          <input class="input" type="password" id="tallyApiKey"
+            value="${ui.savedApiKey || ''}"
+            placeholder="${t('apiKeyPlaceholder')}"
+            autocorrect="off" autocapitalize="off" spellcheck="false">
+          <span class="field-hint">${t('apiKeyHint')}</span>
         </div>
       </div>
 
@@ -712,7 +724,8 @@ async function doConnect() {
     vmixHost:    document.getElementById('vmixHost')?.value.trim()    || '127.0.0.1',
     vmixPort:    document.getElementById('vmixPort')?.value           || '8099',
     tallyRoom:   document.getElementById('tallyRoom')?.value.trim()   || '',
-    tallyUrl:    document.getElementById('tallyUrl')?.value.trim()    || 'https://tallycomm.com'
+    tallyUrl:    document.getElementById('tallyUrl')?.value.trim()    || 'https://tallycomm.com',
+    tallyApiKey: document.getElementById('tallyApiKey')?.value.trim() || ''
   }
 
   if (!cfg.tallyRoom) {

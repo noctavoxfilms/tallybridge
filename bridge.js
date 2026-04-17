@@ -67,7 +67,8 @@ const state = {
     vmixHost:      '127.0.0.1',
     vmixPort:      8099,
     tallyUrl:      'https://tallycomm.com',
-    tallyRoom:     ''
+    tallyRoom:     '',
+    tallyApiKey:   ''
   },
   mapping: {}
 }
@@ -752,15 +753,19 @@ async function sendTallyDirect(camera, bus) {
   if (!room) { log('Sin sala configurada — tally ignorado', 'warn'); return }
   const body = { camera: parseInt(camera), bus, room }
   const url  = `${state.config.tallyUrl.replace(/\/$/, '')}/api/tally`
+  const headers = { 'Content-Type': 'application/json' }
+  // Add auth header if server requires TALLY_SECRET — empty string means no auth
+  if (state.config.tallyApiKey) headers['x-tallycomm-key'] = state.config.tallyApiKey
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(4000)
     })
     const ok = res.ok
-    log(`TALLY cam${camera} ${bus.toUpperCase()} → ${ok ? '✓ OK' : `Error HTTP ${res.status}`}`, ok ? 'success' : 'error')
+    const statusTxt = res.status === 401 ? '401 UNAUTHORIZED — revisa API Key' : `HTTP ${res.status}`
+    log(`TALLY cam${camera} ${bus.toUpperCase()} → ${ok ? '✓ OK' : `Error ${statusTxt}`}`, ok ? 'success' : 'error')
     sse('tally', { ...body, ok, status: res.status })
   } catch (e) {
     log(`TALLY cam${camera} ${bus.toUpperCase()} → ${e.message}`, 'error')
@@ -785,7 +790,7 @@ app.get('/events', (req, res) => {
 })
 
 app.post('/api/connect', async (req, res) => {
-  const { obsHost, obsPort, obsPassword, rgblinkHost, rgblinkPort, atemHost, vmixHost, vmixPort, tallyUrl, tallyRoom, switcher } = req.body
+  const { obsHost, obsPort, obsPassword, rgblinkHost, rgblinkPort, atemHost, vmixHost, vmixPort, tallyUrl, tallyRoom, tallyApiKey, switcher } = req.body
 
   state.config = {
     switcher:    switcher || 'obs',
@@ -798,7 +803,8 @@ app.post('/api/connect', async (req, res) => {
     vmixHost:    vmixHost    || '127.0.0.1',
     vmixPort:    parseInt(vmixPort) || 8099,
     tallyUrl:    tallyUrl    || 'https://tallycomm.com',
-    tallyRoom:   tallyRoom   || ''
+    tallyRoom:   tallyRoom   || '',
+    tallyApiKey: tallyApiKey || ''
   }
 
   manualDisconnect = false
@@ -865,6 +871,7 @@ app.get('/api/status', (req, res) => res.json({
     vmixPort:    state.config.vmixPort,
     tallyUrl:    state.config.tallyUrl,
     tallyRoom:   state.config.tallyRoom,
+    tallyApiKey: state.config.tallyApiKey,
     switcher:    state.config.switcher
   }
 }))
@@ -878,7 +885,7 @@ loadSaved()
 app.listen(LISTEN_PORT, '127.0.0.1', () => {
   if (!isElectron) {
     console.log('\n╔════════════════════════════════════╗')
-    console.log('║ TallyBridge v1.3.2 — TallyComm       ║')
+    console.log('║ TallyBridge v1.4.0 — TallyComm       ║')
     console.log(`║ http://localhost:${LISTEN_PORT}               ║`)
     console.log('╚════════════════════════════════════╝\n')
     const url = `http://localhost:${LISTEN_PORT}`
