@@ -94,6 +94,13 @@ select.input option{background:#1a1a1a;}
 /* FIELD HINT */
 .field-hint{font-family:var(--mono);font-size:10px;color:var(--txt3);}
 
+/* ADVANCED SETTINGS (collapsible) */
+.advanced-section{margin-top:14px;border-top:1px solid var(--bor);padding-top:10px;}
+.advanced-section > summary{font-family:var(--mono);font-size:10px;font-weight:bold;letter-spacing:.1em;color:var(--txt2);cursor:pointer;padding:4px 0;user-select:none;list-style:none;}
+.advanced-section > summary::-webkit-details-marker{display:none;}
+.advanced-section > summary:hover{color:var(--txt);}
+.advanced-section[open] > summary{color:var(--txt);margin-bottom:6px;}
+
 /* CONNECT BUTTON */
 .connect-btn{width:100%;padding:14px;background:var(--red);border:none;border-radius:var(--radius);color:#fff;font-family:var(--sans);font-size:17px;font-weight:700;letter-spacing:.12em;cursor:pointer;transition:opacity .15s;margin-top:4px;}
 .connect-btn:hover{opacity:.88;}
@@ -244,9 +251,11 @@ var _i = {
   roomPlaceholder:  { en: 'e.g.: show-jan-2026', es: 'ej: show-enero-2026' },
   roomHint:         { en: 'Same room name used by camera operators', es: 'El mismo nombre que usan los camar\u00f3grafos al entrar' },
   serverUrl:        { en: 'SERVER URL',      es: 'URL DEL SERVIDOR' },
-  apiKey:           { en: 'API KEY (optional)', es: 'API KEY (opcional)' },
-  apiKeyPlaceholder:{ en: 'Leave empty if server does not require it', es: 'Dejar vac\u00edo si el servidor no la requiere' },
-  apiKeyHint:       { en: 'Ask the TallyComm admin if TALLY_SECRET is set', es: 'Pide la clave al admin si el servidor tiene TALLY_SECRET' },
+  serverUrlHint:    { en: 'Default tallycomm.com works for everyone. Only change for self-hosted or staging environments.', es: 'El default tallycomm.com funciona para todos. Solo cambiar para self-hosted o staging.' },
+  apiKey:           { en: 'API KEY (required)', es: 'API KEY (requerida)' },
+  apiKeyPlaceholder:{ en: 'From your event dashboard', es: 'Desde el dashboard del evento' },
+  apiKeyHint:       { en: 'Get it from your event dashboard \u2192 SWITCHER API KEY section', es: 'Obtenela desde el dashboard del evento \u2192 secci\u00f3n SWITCHER API KEY' },
+  advancedSettings: { en: 'Advanced settings',  es: 'Ajustes avanzados' },
   hostIp:           { en: 'HOST / IP',       es: 'HOST / IP' },
   password:         { en: 'PASSWORD (if set)', es: 'PASSWORD (si tiene)' },
   passwordHint:     { en: 'Leave empty if no password', es: 'Dejar vac\u00edo si no tiene contrase\u00f1a' },
@@ -262,6 +271,7 @@ var _i = {
   clear:            { en: 'CLEAR',           es: 'LIMPIAR' },
   initMsg:          { en: 'TallyBridge v1.3.2 started. Configure connection to begin.', es: 'TallyBridge v1.3.2 iniciado. Configura la conexi\u00f3n para comenzar.' },
   enterRoom:        { en: 'You must enter a room name', es: 'Debes ingresar el nombre de sala' },
+  enterApiKey:      { en: 'API Key is required. Get it from your event dashboard.', es: 'La API Key es obligatoria. Obtenela desde el dashboard del evento.' },
   selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
   connectedTo:      { en: 'CONNECTED TO',    es: 'CONECTADO A' },
   // OBS
@@ -460,12 +470,6 @@ function renderConnect(error) {
           <span class="field-hint">${t('roomHint')}</span>
         </div>
         <div class="field">
-          <span class="field-label">${t('serverUrl')}</span>
-          <input class="input" type="text" id="tallyUrl"
-            value="${ui.savedUrl || 'https://tallycomm.com'}"
-            placeholder="https://tallycomm.com">
-        </div>
-        <div class="field">
           <span class="field-label">${t('apiKey')}</span>
           <input class="input" type="password" id="tallyApiKey"
             value="${ui.savedApiKey || ''}"
@@ -473,6 +477,16 @@ function renderConnect(error) {
             autocorrect="off" autocapitalize="off" spellcheck="false">
           <span class="field-hint">${t('apiKeyHint')}</span>
         </div>
+        <details class="advanced-section">
+          <summary>▸ ${t('advancedSettings')}</summary>
+          <div class="field" style="margin-top:8px">
+            <span class="field-label">${t('serverUrl')}</span>
+            <input class="input" type="text" id="tallyUrl"
+              value="${ui.savedUrl || 'https://tallycomm.com'}"
+              placeholder="https://tallycomm.com">
+            <span class="field-hint">${t('serverUrlHint')}</span>
+          </div>
+        </details>
       </div>
 
       ${error ? `<div class="error-msg">\u26a0 ${error}</div>` : ''}
@@ -730,6 +744,12 @@ async function doConnect() {
 
   if (!cfg.tallyRoom) {
     addLog({ msg: t('enterRoom'), type: 'warn', ts: Date.now() })
+    if (btn) { btn.disabled = false; btn.textContent = t('connectBtn') }
+    return
+  }
+
+  if (!cfg.tallyApiKey) {
+    addLog({ msg: t('enterApiKey'), type: 'warn', ts: Date.now() })
     if (btn) { btn.disabled = false; btn.textContent = t('connectBtn') }
     return
   }

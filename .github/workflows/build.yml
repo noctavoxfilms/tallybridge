@@ -8,6 +8,9 @@ on:
 
 jobs:
   # ── BUILD WINDOWS ────────────────────────────────────────────
+  # Windows stays unsigned — requiere Code Signing Cert de CA externo
+  # (DigiCert/Sectigo, ~$200/año) que no está incluido en Apple Dev Program.
+  # Usuarios Windows ven SmartScreen "Unknown publisher" pero funciona.
   build-windows:
     runs-on: windows-latest
     steps:
@@ -37,7 +40,11 @@ jobs:
             dist/*.exe.blockmap
           retention-days: 30
 
-  # ── BUILD MAC ────────────────────────────────────────────────
+  # ── BUILD MAC (signed + notarized) ───────────────────────────
+  # Firma con Developer ID Application cert importado desde GitHub Secret.
+  # Notariza vía @electron/notarize usando credenciales de Apple como env.
+  # Post-build: notariza + staplea cada DMG container (electron-builder no lo
+  # hace automáticamente, solo con el .app interno).
   build-mac:
     runs-on: macos-latest
     steps:
@@ -53,10 +60,82 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Mac (x64 + arm64)
+      - name: Import Developer ID certificate to temp keychain
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PWD: ${{ secrets.MACOS_CERT_PWD }}
+          MACOS_KEYCHAIN_PWD: ${{ secrets.MACOS_KEYCHAIN_PWD }}
+        run: |
+          # Decode base64 cert from secret
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > $RUNNER_TEMP/cert.p12
+
+          # Create + unlock a temp keychain (runner-scoped, destroyed after job)
+          security create-keychain -p "$MACOS_KEYCHAIN_PWD" $RUNNER_TEMP/build.keychain
+          security set-keychain-settings -lut 21600 $RUNNER_TEMP/build.keychain
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PWD" $RUNNER_TEMP/build.keychain
+
+          # Import cert + private key, grant access to codesign
+          security import $RUNNER_TEMP/cert.p12 \
+            -k $RUNNER_TEMP/build.keychain \
+            -P "$MACOS_CERT_PWD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+
+          # Allow codesign to use the cert without interactive prompts
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$MACOS_KEYCHAIN_PWD" \
+            $RUNNER_TEMP/build.keychain
+
+          # Add build keychain to search list (before login keychain)
+          security list-keychains -d user -s \
+            $RUNNER_TEMP/build.keychain \
+            $(security list-keychains -d user | tr -d '"')
+
+          # Cleanup decoded p12 — cert stays in the keychain
+          rm $RUNNER_TEMP/cert.p12
+
+          # Verify cert is available for codesign
+          echo "=== Identities in build keychain ==="
+          security find-identity -v -p codesigning $RUNNER_TEMP/build.keychain
+
+      - name: Build Mac (x64 + arm64, signed + notarized)
         run: npm run build:mac -- --publish never
         env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # Tell electron-builder which keychain to use for signing
+          CSC_KEYCHAIN: ${{ runner.temp }}/build.keychain
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notarize + staple DMG containers
+        # electron-builder notariza/staplea el .app interno pero el DMG container
+        # queda sin ticket (se genera DESPUÉS de que Apple ya procesó el .app).
+        # Enviamos cada DMG a notarytool + stapleamos para que Gatekeeper pueda
+        # validar offline desde el primer mount.
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          for dmg in dist/*.dmg; do
+            echo "▸ Notarizing $dmg..."
+            xcrun notarytool submit "$dmg" \
+              --apple-id "$APPLE_ID" \
+              --team-id "$APPLE_TEAM_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --wait
+            echo "▸ Stapling $dmg..."
+            xcrun stapler staple "$dmg"
+          done
+
+      - name: Verify signatures + tickets
+        run: |
+          for dmg in dist/*.dmg; do
+            echo "=== $dmg ==="
+            xcrun stapler validate "$dmg" || true
+          done
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
@@ -66,6 +145,11 @@ jobs:
             dist/*.dmg
             dist/*.dmg.blockmap
           retention-days: 30
+
+      - name: Cleanup keychain
+        if: always()
+        run: |
+          security delete-keychain $RUNNER_TEMP/build.keychain || true
 
   # ── RELEASE (solo en tags) ───────────────────────────────────
   release:
@@ -97,15 +181,16 @@ jobs:
             Conecta tu switcher a TallyComm sin instalar Companion ni TallyArbiter.
 
             ### Descargas
-            - **Mac (Apple Silicon):** `TallyBridge-*-arm64.dmg`
-            - **Mac (Intel):** `TallyBridge-*.dmg`
+            - **Mac (Apple Silicon):** `TallyBridge-*-arm64.dmg` — firmado + notarizado por Apple
+            - **Mac (Intel):** `TallyBridge-*.dmg` — firmado + notarizado por Apple
             - **Windows (x64):** `TallyBridge.Setup.*.exe`
             - **Windows (ARM64):** `TallyBridge.Setup.*-arm64.exe`
 
-            ### Compatibilidad
+            ### Switchers soportados
             - ✅ OBS Studio (WebSocket v5)
-            - ✅ RGBlink mini (UDP)
-            - 🔜 ATEM, vMix (próximamente)
+            - ✅ Blackmagic ATEM
+            - ✅ vMix
+            - ✅ RGBlink mini
           files: dist/*
           draft: false
           prerelease: false
