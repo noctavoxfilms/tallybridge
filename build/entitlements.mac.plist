@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!--
+    Electron hardened-runtime entitlements for TallyBridge.
+
+    Required for notarization: hardened runtime must be enabled, and any
+    features that touch things macOS normally blocks (JIT, unsigned memory,
+    library validation) must be explicitly allowed.
+  -->
+
+  <!-- V8 JIT — Electron's JavaScript engine compiles bytecode at runtime. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- atem-connection + other npm native modules aren't signed by us; without
+       this, hardened runtime refuses to load them. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+
+  <!-- Outbound: POST /api/tally to tallycomm.com + switcher connections (OBS
+       WebSocket, vMix TCP, ATEM UDP, RGBlink UDP). -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+
+  <!-- Inbound: local Express server on localhost:4000 (config UI). -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+</dict>
+</plist>

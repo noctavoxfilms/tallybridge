@@ -2,7 +2,7 @@
   "name": "tallybridge",
   "version": "1.4.0",
   "description": "TallyBridge — conecta tu switcher a TallyComm",
-  "author": "Noctavox Films",
+  "author": "Noctavox",
   "main": "electron-main.js",
   "scripts": {
     "start": "node bridge.js",
@@ -24,7 +24,7 @@
   "build": {
     "appId": "com.tallycomm.tallybridge",
     "productName": "TallyBridge",
-    "copyright": "Copyright © 2025 Noctavox Films",
+    "copyright": "Copyright © 2025 Noctavox",
     "files": [
       "electron-main.js",
       "bridge.js",
@@ -36,6 +36,13 @@
     "mac": {
       "category": "public.app-category.video",
       "icon": "icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": {
+        "teamId": "8922S5NL5T"
+      },
       "target": [
         {
           "target": "dmg",

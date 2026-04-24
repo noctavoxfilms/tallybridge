@@ -7,3 +7,7 @@ dist/
 icon.iconset/
 tallybridge-config.json
 CLAUDE.md
+# Screenshots sueltos de sesiones de QA local
+*.png
+# Playwright MCP temp
+.playwright-mcp/

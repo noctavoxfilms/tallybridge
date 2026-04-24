@@ -11,7 +11,7 @@
 ## Setup inicial
 
 ```bash
-cd ~/Desktop/tallybridge
+cd ~/Documents/TallyComm-Bridge
 npm install
 ```
 
@@ -111,3 +111,69 @@ tallybridge/
 
 Sube los archivos de `dist/` a tallycomm.com para que los clientes los descarguen.
 Página sugerida: `tallycomm.com/bridge`
+
+---
+
+## Build firmado para Mac (Developer ID + notarización)
+
+> Requiere Apple Developer Program aprobado (vigente desde abril 2026).
+> Team ID: `8922S5NL5T`
+
+El build sin firmar abre en Mac con warning "desarrollador no identificado" + click derecho "Abrir". El build firmado + notarizado abre directo en cualquier Mac sin warnings.
+
+### Setup (una sola vez)
+
+1. **Generar cert "Developer ID Application"**
+   - Xcode → Settings (Cmd+,) → Accounts → seleccionar Apple ID
+   - Click **Manage Certificates…**
+   - Click **+** (abajo izquierda) → **Developer ID Application**
+   - Xcode lo importa automáticamente al login Keychain
+
+2. **Generar App-Specific Password**
+   - https://appleid.apple.com → Sign-In and Security → App-Specific Passwords
+   - Click **+** → nombrar "TallyBridge notarize"
+   - Copiar el password (formato `xxxx-xxxx-xxxx-xxxx`)
+
+3. **Crear archivo de credenciales local** (no entra al repo):
+
+```bash
+cat > ~/.tallybridge-sign.env << 'EOF'
+export APPLE_ID="tu-apple-id@example.com"
+export APPLE_TEAM_ID="8922S5NL5T"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+EOF
+chmod 600 ~/.tallybridge-sign.env
+```
+
+### Build firmado
+
+```bash
+cd ~/Documents/TallyComm-Bridge
+./sign-local.sh
+```
+
+El script:
+1. Valida que las env vars existan
+2. Verifica que el cert esté en Keychain
+3. Corre `npm run build:mac` con hardened runtime + entitlements + notarización automática via `@electron/notarize`
+4. Notarización toma 1–3 min (Apple escanea el binario)
+5. Output: `dist/TallyBridge-X.Y.Z-{x64,arm64}.dmg` firmado + notarizado
+
+### Verificar la firma
+
+```bash
+# 1. Ver que el .app interno está firmado correctamente
+codesign --verify --deep --strict --verbose=2 dist/mac-arm64/TallyBridge.app
+
+# 2. Verificar notarización + staple
+spctl --assess --type exec --verbose dist/mac-arm64/TallyBridge.app
+# Output esperado: "accepted" + "source=Notarized Developer ID"
+
+# 3. Verificar que el DMG tiene el ticket stapleado
+xcrun stapler validate dist/TallyBridge-1.4.0-arm64.dmg
+# Output esperado: "The validate action worked!"
+```
+
+### Windows signing (diferido)
+
+Windows NO está incluido en Apple Developer Program. Requiere Code Signing Certificate de CA externo (DigiCert, Sectigo, etc — $200-500/año). Sin eso el `.exe` muestra SmartScreen "Unknown publisher" pero funciona. Agregar cuando haya demanda real de usuarios Windows.
