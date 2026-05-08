@@ -1,6 +1,6 @@
 {
   "name": "tallybridge",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "TallyBridge — conecta tu switcher a TallyComm",
   "author": "Noctavox",
   "main": "electron-main.js",
@@ -29,6 +29,7 @@
       "electron-main.js",
       "bridge.js",
       "bridge-ui.html",
+      "assets/brand/*.png",
       "node_modules/**",
       "!node_modules/electron-builder/**",
       "!node_modules/.cache/**"

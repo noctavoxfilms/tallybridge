@@ -1,5 +1,5 @@
 // ============================================================
-// TallyBridge v1.3.2 — conecta OBS, ATEM, vMix y RGBlink mini a TallyComm
+// TallyBridge v1.5.0 — conecta OBS, vMix, ATEM, RGBlink mini, Osee GoStream, Roland Smart Tally, NewTek/Vizrt TriCaster y AVMatrix a TallyComm
 // ============================================================
 'use strict'
 const express   = require('express')
@@ -7,6 +7,7 @@ const WebSocket = require('ws')
 const net       = require('net')
 const dgram     = require('dgram')
 const crypto    = require('crypto')
+const http      = require('http')
 const path      = require('path')
 const fs        = require('fs')
 const { execSync } = require('child_process')
@@ -17,6 +18,13 @@ const PORT = 4000
 app.use(express.json())
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'bridge-ui.html')))
+
+// Brand logos used in the switcher selector. Cache aggressively (1 day) — these
+// rarely change. Express.static rejects path traversal automatically.
+app.use('/assets', express.static(path.join(__dirname, 'assets'), {
+  maxAge: '1d',
+  fallthrough: false
+}))
 
 // ── Persistencia ──────────────────────────────────────────────
 const SAVE_FILE = path.join(
@@ -66,6 +74,15 @@ const state = {
     atemHost:      '192.168.10.240',
     vmixHost:      '127.0.0.1',
     vmixPort:      8099,
+    oseeHost:      '192.168.1.100',
+    rolandHost:    '192.168.0.1',
+    rolandPort:    80,
+    rolandInputs:  8,
+    tricasterHost: '192.168.1.10',
+    tricasterPort: 80,
+    tricasterInputs: 8,
+    avmatrixHost:  '192.168.1.110',
+    avmatrixInputs: 4,
     tallyUrl:      'https://tallycomm.com',
     tallyRoom:     '',
     tallyApiKey:   ''
@@ -529,6 +546,706 @@ function vmixDisconnect() {
   }
 }
 
+// ── Osee GoStream (TCP port 19010) ─────────────────────────────
+// Protocol "GSP" — single TCP socket, push-based, no auth.
+// Reference: bitfocus/companion-module-osee-gostream-series (MIT).
+//
+// Frame format (little-endian):
+//   [0xEB][0xA6][0x00 ProType][len:UInt16LE][JSON UTF-8][CRC16-Modbus:UInt16LE]
+//   len = json.length + 2 (size of JSON + size of CRC trailer)
+//   CRC computed over header(3) + len(2) + JSON.
+//
+// Source IDs: 0=Black, 1..8=IN1..IN8, others=non-camera (PGM/MP/ColorBar). Map IN N → CAM N.
+
+let oseeSocket = null
+let oseeBuffer = Buffer.alloc(0)
+const OSEE_PORT    = 19010
+const OSEE_INPUTS  = 8   // GoStream Duet 8 ISO ceiling; smaller models just leave 5..8 unused
+const OSEE_HEAD    = Buffer.from([0xEB, 0xA6, 0x00])
+
+function crc16modbus(buf) {
+  let crc = 0xFFFF
+  for (let i = 0; i < buf.length; i++) {
+    crc ^= buf[i]
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x0001) crc = (crc >>> 1) ^ 0xA001
+      else crc = crc >>> 1
+    }
+  }
+  return crc & 0xFFFF
+}
+
+function oseePack(obj) {
+  const json = Buffer.from(JSON.stringify(obj), 'utf8')
+  const len  = json.length + 2          // JSON + CRC trailer
+  const body = Buffer.alloc(3 + 2 + json.length)
+  OSEE_HEAD.copy(body, 0)
+  body.writeUInt16LE(len, 3)
+  json.copy(body, 5)
+  const crc = Buffer.alloc(2)
+  crc.writeUInt16LE(crc16modbus(body), 0)
+  return Buffer.concat([body, crc])
+}
+
+function oseeSend(obj) {
+  if (!oseeSocket || oseeSocket.destroyed) return
+  try { oseeSocket.write(oseePack(obj)) } catch (e) { log('Osee send error: ' + e.message, 'warn') }
+}
+
+function oseeConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error = null
+    sse('status', statusPayload())
+
+    const host = cfg.oseeHost || '192.168.1.100'
+    log(`Conectando a Osee GoStream en ${host}:${OSEE_PORT}…`)
+
+    const sock = new net.Socket()
+    oseeSocket = sock
+    oseeBuffer = Buffer.alloc(0)
+    let resolved = false
+
+    const failWith = (err) => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(connTimeout)
+      try { sock.destroy() } catch {}
+      oseeSocket = null
+      state.connected = false
+      state.connecting = false
+      state.error = err.message
+      sse('status', statusPayload())
+      reject(err)
+    }
+
+    const connTimeout = setTimeout(() => {
+      sock.destroy()
+      failWith(new Error('Timeout al conectar a Osee GoStream (5s)'))
+    }, 5000)
+
+    sock.connect(OSEE_PORT, host, () => {
+      clearTimeout(connTimeout)
+      resolved = true
+      state.connected = true
+      state.connecting = false
+      log('Conectado a Osee GoStream ✓', 'success')
+
+      // Build generic input list (1..8). Non-physical IDs map nowhere — handler clears them.
+      state.scenes = Array.from({ length: OSEE_INPUTS }, (_, i) => ({
+        sceneName:   `input_${i + 1}`,
+        displayName: `Input ${i + 1}`
+      }))
+      let autoMapped = 0
+      state.scenes.forEach((s, i) => {
+        if (!state.mapping[s.sceneName]) {
+          state.mapping[s.sceneName] = i + 1
+          autoMapped++
+        }
+      })
+      if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+      sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+      sse('status', statusPayload())
+
+      // Initial state queries — switcher will reply with current PGM/PVW and then
+      // push spontaneously on every bus change.
+      oseeSend({ id: 'pgmIndex', type: 'get' })
+      oseeSend({ id: 'pvwIndex', type: 'get' })
+      resolve()
+    })
+
+    sock.on('data', (chunk) => {
+      oseeBuffer = oseeBuffer.length ? Buffer.concat([oseeBuffer, chunk]) : chunk
+      // Guard against runaway buffer (#8 vMix-style)
+      if (oseeBuffer.length > 65536) oseeBuffer = oseeBuffer.slice(-8192)
+      _processOseeBuffer()
+    })
+
+    sock.on('error', (err) => {
+      if (!resolved) failWith(err)
+      else {
+        log('Osee error: ' + err.message, 'warn')
+        state.connected = false
+        sse('status', statusPayload())
+      }
+    })
+
+    sock.on('close', () => {
+      if (!resolved) failWith(new Error('Conexión cerrada'))
+      else if (state.connected) {
+        state.connected = false
+        log('Osee GoStream desconectado', 'warn')
+        sse('status', statusPayload())
+        if (!manualDisconnect) scheduleReconnect()
+      }
+    })
+  })
+}
+
+function _processOseeBuffer() {
+  while (oseeBuffer.length >= 7) {
+    // Resync to magic bytes 0xEB 0xA6
+    if (oseeBuffer[0] !== 0xEB || oseeBuffer[1] !== 0xA6) {
+      const idx = oseeBuffer.indexOf(0xEB, 1)
+      if (idx === -1) { oseeBuffer = Buffer.alloc(0); return }
+      oseeBuffer = oseeBuffer.slice(idx)
+      continue
+    }
+    const len = oseeBuffer.readUInt16LE(3)         // JSON + CRC trailer length
+    const total = 5 + len                          // header(3) + len(2) + JSON + CRC
+    if (oseeBuffer.length < total) return          // wait for more
+    const json = oseeBuffer.slice(5, 5 + len - 2)
+    // CRC bytes are at [5 + len - 2 .. 5 + len - 1] — we trust the link, skip verify
+    oseeBuffer = oseeBuffer.slice(total)
+    let payload
+    try { payload = JSON.parse(json.toString('utf8')) }
+    catch { continue }
+    _handleOseeMessage(payload)
+  }
+}
+
+function _handleOseeMessage(msg) {
+  // msg = { id: 'pgmIndex'|'pvwIndex'|..., type: 'get'|'pus'|..., value: [N] }
+  if (!msg || typeof msg !== 'object') return
+  if (msg.id !== 'pgmIndex' && msg.id !== 'pvwIndex') return
+  if (msg.type !== 'get' && msg.type !== 'pus') return
+
+  const sourceId = Array.isArray(msg.value) ? Number(msg.value[0]) : Number(msg.value)
+  const isPhysical = Number.isInteger(sourceId) && sourceId >= 1 && sourceId <= OSEE_INPUTS
+  const key = isPhysical ? `input_${sourceId}` : null
+
+  // Update only the bus this message refers to; preserve the other.
+  const newPgm = msg.id === 'pgmIndex' ? key : state.pgmScene
+  const newPvw = msg.id === 'pvwIndex' ? key : state.pvwScene
+  updateTallyState(newPgm, newPvw)
+}
+
+function oseeDisconnect() {
+  if (oseeSocket) {
+    try { oseeSocket.destroy() } catch {}
+    oseeSocket = null
+  }
+  oseeBuffer = Buffer.alloc(0)
+}
+
+// ── Roland Smart Tally (HTTP polling) ──────────────────────────
+// Standard Smart Tally HTTP protocol — supported by V-60HD, V-1HD, V-1SDI,
+// V-160HD, VR-1HD, VR-3EX, VR-4HD, VR-50HD MKII, VR-120HD, P-20HD, XS-series,
+// and others. Default TCP port 80, no auth.
+//   GET /tally/<input>/status  →  body: "onair" | "selected" | "unselected"
+// Reference: Roland V-60HD Smart Tally PDF + wifi-tally RolandV60HDConnector.
+
+let rolandPollingTimer = null
+let rolandFailCount    = 0
+const ROLAND_POLL_MS         = 250   // matches RGBlink pattern; budget for 12 inputs
+const ROLAND_FAIL_THRESHOLD  = 5     // consecutive ticks with all-input errors → disconnect
+
+function rolandConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error = null
+    sse('status', statusPayload())
+
+    const host = cfg.rolandHost || '192.168.0.1'
+    const port = parseInt(cfg.rolandPort) || 80
+    const nIn  = Math.max(1, Math.min(parseInt(cfg.rolandInputs) || 8, 20))
+
+    log(`Conectando a Roland Smart Tally en ${host}:${port} (${nIn} entradas)…`)
+
+    // Single GET as handshake — confirms the embedded HTTP server is reachable
+    // and Smart Tally is enabled. Timeout 4s.
+    rolandFetch(host, port, 1, 4000)
+      .then((status) => {
+        log(`Roland respondió input 1 → ${status} ✓`, 'success')
+        state.connected = true
+        state.connecting = false
+
+        state.scenes = Array.from({ length: nIn }, (_, i) => ({
+          sceneName:   `input_${i + 1}`,
+          displayName: `Input ${i + 1}`
+        }))
+        let autoMapped = 0
+        state.scenes.forEach((s, i) => {
+          if (!state.mapping[s.sceneName]) {
+            state.mapping[s.sceneName] = i + 1
+            autoMapped++
+          }
+        })
+        if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+        sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+        sse('status', statusPayload())
+
+        rolandFailCount = 0
+        rolandPollingTimer = setInterval(() => rolandPollAll(host, port, nIn), ROLAND_POLL_MS)
+        // Kick the first tick now (don't wait the interval)
+        rolandPollAll(host, port, nIn)
+        resolve()
+      })
+      .catch((err) => {
+        state.connected = false
+        state.connecting = false
+        state.error = `Roland: ${err.message}`
+        sse('status', statusPayload())
+        reject(err)
+      })
+  })
+}
+
+function rolandFetch(host, port, input, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host, port, path: `/tally/${input}/status`, method: 'GET',
+      timeout: timeoutMs || 1500
+    }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (d) => body += d)
+      res.on('end', () => {
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`))
+        resolve(body.trim().toLowerCase())
+      })
+    })
+    req.on('error', (err) => reject(err))
+    req.on('timeout', () => { req.destroy(new Error('timeout')) })
+    req.end()
+  })
+}
+
+function rolandPollAll(host, port, nIn) {
+  // Kick all input polls in parallel, then once they've all settled compute the
+  // bus state in one batch + dispatch a single updateTallyState. Async batching
+  // avoids the dedup-thrash that would happen if each response called
+  // updateTallyState independently while siblings were still in flight.
+  const polls = []
+  for (let i = 1; i <= nIn; i++) {
+    polls.push(rolandFetch(host, port, i, 1500).then(
+      (status) => ({ input: i, status, ok: true }),
+      (err)    => ({ input: i, error: err, ok: false })
+    ))
+  }
+  Promise.all(polls).then((results) => {
+    let okCount = 0
+    let newPgmKey = null
+    let newPvwKey = null
+    results.forEach((r) => {
+      if (!r.ok) return
+      okCount++
+      const key = `input_${r.input}`
+      if (r.status === 'onair'    && !newPgmKey) newPgmKey = key
+      if (r.status === 'selected' && !newPvwKey) newPvwKey = key
+    })
+
+    if (okCount === 0) {
+      rolandFailCount++
+      if (rolandFailCount === ROLAND_FAIL_THRESHOLD) {
+        log(`Roland: ${ROLAND_FAIL_THRESHOLD} ciclos sin respuesta — desconectado`, 'warn')
+        rolandDisconnect()
+        if (state.connected) {
+          state.connected = false
+          sse('status', statusPayload())
+          if (!manualDisconnect) scheduleReconnect()
+        }
+      }
+      return
+    }
+
+    rolandFailCount = 0
+    updateTallyState(newPgmKey, newPvwKey)
+  })
+}
+
+function rolandDisconnect() {
+  if (rolandPollingTimer) { clearInterval(rolandPollingTimer); rolandPollingTimer = null }
+  rolandFailCount = 0
+}
+
+// ── TriCaster (HTTP REST + WebSocket on :80, "v1" API — Path B) ─
+// NewTek/Vizrt automation API. Hybrid push/pull pattern:
+//   ws://<ip>/v1/change_notifications  → server pushes the name of any key
+//                                        that changed ("shortcut_states", …)
+//   GET <ip>/v1/dictionary?key=KEY      → returns XML with current state
+// Tally lives in shortcut_states under program_tally + preview_tally; values
+// are pipe-delimited lists, first INPUTn token owns the bus.
+//
+// Requires LivePanel password DISABLED (TriCaster Admin Tools → LivePanel).
+// Compatible with TC1, TC2 Elite, TC Mini, VMC1, 410 Plus, 8000 Vectar
+// running TriCaster Advanced Edition firmware (8.x).
+// Reference: NewTek Live Production Automation Guide v8-5 + Companion module
+// bitfocus/companion-module-newtek-tricaster.
+
+let tricasterWs        = null
+let tricasterPollTimer = null
+let tricasterFailCount = 0
+const TRICASTER_FAIL_THRESHOLD   = 5
+const TRICASTER_FALLBACK_POLL_MS = 1500
+
+function tricasterConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error = null
+    sse('status', statusPayload())
+
+    const host = cfg.tricasterHost || '192.168.1.10'
+    const port = parseInt(cfg.tricasterPort) || 80
+    const nIn  = Math.max(1, Math.min(parseInt(cfg.tricasterInputs) || 8, 16))
+
+    log(`Conectando a TriCaster en ${host}:${port} (${nIn} entradas)…`)
+
+    // Handshake: HTTP GET /v1/version verifies server reachable + LivePanel
+    // password disabled. 401/403 → password is set; user must disable it.
+    tricasterFetchVersion(host, port, 4000)
+      .then((version) => {
+        log(`TriCaster ${version || 'v1 API'} ✓`, 'success')
+
+        state.connected = true
+        state.connecting = false
+
+        state.scenes = Array.from({ length: nIn }, (_, i) => ({
+          sceneName:   `input_${i + 1}`,
+          displayName: `Input ${i + 1}`
+        }))
+        let autoMapped = 0
+        state.scenes.forEach((s, i) => {
+          if (!state.mapping[s.sceneName]) {
+            state.mapping[s.sceneName] = i + 1
+            autoMapped++
+          }
+        })
+        if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+        sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+        sse('status', statusPayload())
+
+        tricasterRefreshTally(host, port)
+        tricasterOpenWs(host, port)
+        resolve()
+      })
+      .catch((err) => {
+        state.connected = false
+        state.connecting = false
+        state.error = `TriCaster: ${err.message}`
+        sse('status', statusPayload())
+        reject(err)
+      })
+  })
+}
+
+function tricasterFetchVersion(host, port, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      host, port, path: '/v1/version', method: 'GET',
+      timeout: timeoutMs || 1500
+    }, (res) => {
+      let body = ''
+      res.setEncoding('utf8')
+      res.on('data', (d) => body += d)
+      res.on('end', () => {
+        if (res.statusCode === 401 || res.statusCode === 403) {
+          return reject(new Error('LivePanel password está habilitado. Deshabilítalo en Admin Tools.'))
+        }
+        // Older firmware may lack /v1/version — accept 404 as a soft pass; the
+        // real handshake is the next call to /v1/dictionary?key=shortcut_states
+        if (res.statusCode === 404) return resolve('v1 API')
+        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`))
+        const m = body.match(/<version[^>]*>([^<]+)<\/version>/i)
+        resolve((m ? m[1] : body).trim().slice(0, 80))
+      })
+    })
+    req.on('error', (err) => reject(err))
+    req.on('timeout', () => req.destroy(new Error('timeout')))
+    req.end()
+  })
+}
+
+function tricasterRefreshTally(host, port) {
+  http.request({
+    host, port, path: '/v1/dictionary?key=shortcut_states', method: 'GET',
+    timeout: 2000
+  }, (res) => {
+    let body = ''
+    res.setEncoding('utf8')
+    res.on('data', (d) => body += d)
+    res.on('end', () => {
+      if (res.statusCode !== 200) {
+        if (++tricasterFailCount >= TRICASTER_FAIL_THRESHOLD) tricasterMarkDown('HTTP ' + res.statusCode)
+        return
+      }
+      tricasterFailCount = 0
+      const r = parseTricasterTally(body)
+      const pgmKey = r.pgmInput ? `input_${r.pgmInput}` : null
+      const pvwKey = r.pvwInput ? `input_${r.pvwInput}` : null
+      updateTallyState(pgmKey, pvwKey)
+    })
+  }).on('error', (err) => {
+    if (++tricasterFailCount >= TRICASTER_FAIL_THRESHOLD) tricasterMarkDown(err.message)
+  }).end()
+}
+
+function parseTricasterTally(xml) {
+  // First INPUTn token owns the bus; skip BFR / DDR / VIRTUAL / M-E etc.
+  // (TriCaster's M/E sub-source tally is not exposed via 5951/v1; that's a
+  // documented Vizrt limitation, fine for cam-level tally use.)
+  function firstInputFrom(value) {
+    if (!value) return 0
+    const tokens = String(value).split('|')
+    for (let i = 0; i < tokens.length; i++) {
+      const m = tokens[i].match(/^INPUT(\d+)$/i)
+      if (m) return parseInt(m[1], 10)
+    }
+    return 0
+  }
+  const pgmMatch = xml.match(/name="program_tally"\s+value="([^"]*)"/i)
+  const pvwMatch = xml.match(/name="preview_tally"\s+value="([^"]*)"/i)
+  return {
+    pgmInput: pgmMatch ? firstInputFrom(pgmMatch[1]) : 0,
+    pvwInput: pvwMatch ? firstInputFrom(pvwMatch[1]) : 0
+  }
+}
+
+function tricasterMarkDown(reason) {
+  log(`TriCaster: ${reason} — desconectando`, 'warn')
+  tricasterDisconnect()
+  if (state.connected) {
+    state.connected = false
+    sse('status', statusPayload())
+    if (!manualDisconnect) scheduleReconnect()
+  }
+}
+
+function tricasterOpenWs(host, port) {
+  if (tricasterWs) { try { tricasterWs.terminate() } catch {}; tricasterWs = null }
+  if (tricasterPollTimer) { clearInterval(tricasterPollTimer); tricasterPollTimer = null }
+
+  const wsUrl = `ws://${host}:${port}/v1/change_notifications`
+  const ws = new WebSocket(wsUrl)
+  tricasterWs = ws
+
+  ws.on('open',    () => log('TriCaster change_notifications WS conectado ✓', 'success'))
+  ws.on('message', (raw) => {
+    if (String(raw).toLowerCase().includes('shortcut_states')) {
+      tricasterRefreshTally(host, port)
+    }
+  })
+  ws.on('error',   (err) => log('TriCaster WS error: ' + err.message, 'warn'))
+  ws.on('close',   () => {
+    if (tricasterWs !== ws) return
+    tricasterWs = null
+    if (state.connected && !manualDisconnect) {
+      // Fallback to slow HTTP polling while the WS is down — keeps tally alive
+      log('TriCaster WS cerrado — fallback a polling', 'warn')
+      tricasterPollTimer = setInterval(() => {
+        if (state.connected) tricasterRefreshTally(host, port)
+      }, TRICASTER_FALLBACK_POLL_MS)
+    }
+  })
+}
+
+function tricasterDisconnect() {
+  if (tricasterWs) { try { tricasterWs.terminate() } catch {}; tricasterWs = null }
+  if (tricasterPollTimer) { clearInterval(tricasterPollTimer); tricasterPollTimer = null }
+  tricasterFailCount = 0
+}
+
+// ── AVMatrix (UDP push protocol on :19523/:19522) ──────────────
+// Push-based UDP shared across the AVMatrix HVS/PVS line:
+//   Bridge → switcher: UDP :19523
+//   Switcher → bridge: UDP :19522 (we bind here)
+// Frame format (TX and RX identical):
+//   [0]    0x5A               start byte
+//   [1-2]  totalLen (UInt16LE) full frame length including footer
+//   [3]    0x00 (devType)
+//   [4]    0x00 (devId)
+//   [5]    0x00 (reserve)
+//   [6]    dataLen             = 1 + payload bytes (cmd + payload)
+//   [7]    cmd byte
+//   [8...] payload
+//   [N-2]  checksum             sum of all preceding bytes & 0xff
+//   [N-1]  0xDD                 end byte
+//
+// Tally RX commands: cmd=0x12 → PGM=payload[0], cmd=0x13 → PVW=payload[0],
+// cmd=0x11 payload[0]=0x03 → FTB on/off (kill tally if payload[1] != 0).
+// Confirmed: HVS0402U, HVS0403U, PVS0403U.
+// Likely (same firmware family): VS0601/U, MVS0401, PVS0613U/0615, VS0605U,
+// PVS0605U, HVS0203U.
+// Reference: lygilygi/companion-module-avmatrix (MIT, reverse-engineered from
+// the official AVMatrix PC Control software protocol spec).
+
+let avmSocket    = null
+let avmKeepalive = null
+let avmRxAt      = 0
+const AVMATRIX_TX_PORT       = 19523
+const AVMATRIX_RX_PORT       = 19522
+const AVMATRIX_KEEPALIVE_MS  = 1000
+const AVMATRIX_RX_TIMEOUT_MS = 12000  // 12 ticks of silence → assume disconnect
+
+function avmatrixPack(cmd, payload) {
+  payload = payload || []
+  // header(7) + cmd(1) + payload(N) + checksum(1) + footer(1)
+  const totalLen = 7 + 1 + payload.length + 1 + 1
+  const buf = Buffer.alloc(totalLen)
+  buf[0] = 0x5A
+  buf.writeUInt16LE(totalLen, 1)
+  buf[3] = 0x00       // devType
+  buf[4] = 0x00       // devId
+  buf[5] = 0x00       // reserve
+  buf[6] = 1 + payload.length    // dataLen
+  buf[7] = cmd
+  for (let i = 0; i < payload.length; i++) buf[8 + i] = payload[i]
+  let sum = 0
+  for (let i = 0; i < totalLen - 2; i++) sum = (sum + buf[i]) & 0xff
+  buf[totalLen - 2] = sum
+  buf[totalLen - 1] = 0xDD
+  return buf
+}
+
+function avmatrixSend(host, port, buf) {
+  if (!avmSocket) return
+  avmSocket.send(buf, 0, buf.length, port, host, (err) => {
+    if (err) log('AVMatrix send error: ' + err.message, 'warn')
+  })
+}
+
+function avmatrixConnect(cfg) {
+  return new Promise((resolve, reject) => {
+    state.connecting = true
+    state.error = null
+    sse('status', statusPayload())
+
+    const host = cfg.avmatrixHost || '192.168.1.110'
+    const port = AVMATRIX_TX_PORT
+    const nIn  = Math.max(1, Math.min(parseInt(cfg.avmatrixInputs) || 4, 16))
+    avmRxAt = 0
+
+    log(`Conectando a AVMatrix en ${host}:${port} (${nIn} entradas)…`)
+
+    const sock = dgram.createSocket('udp4')
+    avmSocket = sock
+
+    let resolved = false
+    const failWith = (err) => {
+      if (resolved) return
+      resolved = true
+      clearTimeout(connTimeout)
+      try { sock.close() } catch {}
+      avmSocket = null
+      state.connected = false
+      state.connecting = false
+      state.error = err.message
+      sse('status', statusPayload())
+      reject(err)
+    }
+
+    // UDP gives no error on unreachable host — must time out explicitly. The
+    // switcher dumps state on sync, so we expect RX within ~500ms in practice.
+    const connTimeout = setTimeout(() => {
+      if (resolved) return
+      resolved = true
+      try { sock.close() } catch {}
+      avmSocket = null
+      state.connected = false
+      state.connecting = false
+      state.error = 'Timeout — el switcher no respondió en :19522. Verifica IP y conectividad LAN.'
+      sse('status', statusPayload())
+      reject(new Error(state.error))
+    }, 5000)
+
+    sock.on('error', (err) => failWith(err))
+
+    sock.on('message', (msg) => {
+      avmRxAt = Date.now()
+      if (!resolved) {
+        resolved = true
+        clearTimeout(connTimeout)
+        state.connected = true
+        state.connecting = false
+        log(`AVMatrix respondió ✓`, 'success')
+
+        state.scenes = Array.from({ length: nIn }, (_, i) => ({
+          sceneName:   `input_${i + 1}`,
+          displayName: `Input ${i + 1}`
+        }))
+        let autoMapped = 0
+        state.scenes.forEach((s, i) => {
+          if (!state.mapping[s.sceneName]) {
+            state.mapping[s.sceneName] = i + 1
+            autoMapped++
+          }
+        })
+        if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+        sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+        sse('status', statusPayload())
+
+        // Watchdog: keepalive (sync + ping) every 1s, RX silence → disconnect
+        avmKeepalive = setInterval(() => {
+          if (!avmSocket) return
+          avmatrixSend(host, port, avmatrixPack(0xFE, [0x01])) // sync request
+          avmatrixSend(host, port, avmatrixPack(0xFF, [0x01])) // ping
+          if (Date.now() - avmRxAt > AVMATRIX_RX_TIMEOUT_MS) {
+            log('AVMatrix: sin RX por 12s — desconectando', 'warn')
+            avmatrixDisconnect()
+            if (state.connected) {
+              state.connected = false
+              sse('status', statusPayload())
+              if (!manualDisconnect) scheduleReconnect()
+            }
+          }
+        }, AVMATRIX_KEEPALIVE_MS)
+
+        resolve()
+      }
+      handleAvmatrixMessage(msg)
+    })
+
+    sock.bind(AVMATRIX_RX_PORT, '0.0.0.0', (err) => {
+      if (err) { failWith(err); return }
+      log(`AVMatrix UDP socket bound to :${AVMATRIX_RX_PORT}`)
+      // Sync request — switcher dumps full state including current PGM/PVW
+      avmatrixSend(host, port, avmatrixPack(0xFE, [0x01]))
+    })
+  })
+}
+
+function handleAvmatrixMessage(buf) {
+  // Validate framing: 0x5A start, 0xDD end, length match, checksum
+  if (buf.length < 10) return
+  if (buf[0] !== 0x5A || buf[buf.length - 1] !== 0xDD) return
+  const totalLen = buf.readUInt16LE(1)
+  if (totalLen !== buf.length) return
+  let sum = 0
+  for (let i = 0; i < totalLen - 2; i++) sum = (sum + buf[i]) & 0xff
+  if (buf[totalLen - 2] !== sum) return
+
+  const cmd = buf[7]
+  const payload = buf.slice(8, totalLen - 2)
+
+  if (cmd === 0x12 && payload.length >= 1) {
+    const n = payload[0]
+    const key = (n >= 1 && n <= 16) ? `input_${n}` : null
+    updateTallyState(key, state.pvwScene)
+    return
+  }
+  if (cmd === 0x13 && payload.length >= 1) {
+    const n = payload[0]
+    const key = (n >= 1 && n <= 16) ? `input_${n}` : null
+    updateTallyState(state.pgmScene, key)
+    return
+  }
+  if (cmd === 0x11 && payload.length >= 2 && payload[0] === 0x03) {
+    // FTB (Fade To Black): when active, kill all tally
+    if (payload[1] !== 0) updateTallyState(null, null)
+    return
+  }
+  // Other RX (0x01 sync ack, 0xFF ping ack, etc.) — ignore, only tally matters
+}
+
+function avmatrixDisconnect() {
+  if (avmKeepalive) { clearInterval(avmKeepalive); avmKeepalive = null }
+  if (avmSocket) {
+    try { avmSocket.close() } catch {}
+    avmSocket = null
+  }
+  avmRxAt = 0
+}
+
 // ── Auto-reconnect ─────────────────────────────────────────────
 function scheduleReconnect(delay = 4000) {
   if (reconnectTimer) return
@@ -542,6 +1259,10 @@ function scheduleReconnect(delay = 4000) {
       if (sw === 'atem') await atemConnect(state.config)
       else if (sw === 'vmix') await vmixConnect(state.config)
       else if (sw === 'rgblink') await rgblinkConnect(state.config)
+      else if (sw === 'osee') await oseeConnect(state.config)
+      else if (sw === 'roland') await rolandConnect(state.config)
+      else if (sw === 'tricaster') await tricasterConnect(state.config)
+      else if (sw === 'avmatrix') await avmatrixConnect(state.config)
       else await obsConnect(state.config)
     } catch (e) {
       log('Reconexión fallida: ' + e.message, 'warn')
@@ -790,21 +1511,30 @@ app.get('/events', (req, res) => {
 })
 
 app.post('/api/connect', async (req, res) => {
-  const { obsHost, obsPort, obsPassword, rgblinkHost, rgblinkPort, atemHost, vmixHost, vmixPort, tallyUrl, tallyRoom, tallyApiKey, switcher } = req.body
+  const { obsHost, obsPort, obsPassword, rgblinkHost, rgblinkPort, atemHost, vmixHost, vmixPort, oseeHost, rolandHost, rolandPort, rolandInputs, tricasterHost, tricasterPort, tricasterInputs, avmatrixHost, avmatrixInputs, tallyUrl, tallyRoom, tallyApiKey, switcher } = req.body
 
   state.config = {
-    switcher:    switcher || 'obs',
-    obsHost:     obsHost     || '127.0.0.1',
-    obsPort:     parseInt(obsPort) || 4455,
-    obsPassword: obsPassword || '',
-    rgblinkHost: rgblinkHost || '192.168.0.99',
-    rgblinkPort: parseInt(rgblinkPort) || RGBLINK_PORT,
-    atemHost:    atemHost    || '192.168.10.240',
-    vmixHost:    vmixHost    || '127.0.0.1',
-    vmixPort:    parseInt(vmixPort) || 8099,
-    tallyUrl:    tallyUrl    || 'https://tallycomm.com',
-    tallyRoom:   tallyRoom   || '',
-    tallyApiKey: tallyApiKey || ''
+    switcher:        switcher || 'obs',
+    obsHost:         obsHost     || '127.0.0.1',
+    obsPort:         parseInt(obsPort) || 4455,
+    obsPassword:     obsPassword || '',
+    rgblinkHost:     rgblinkHost || '192.168.0.99',
+    rgblinkPort:     parseInt(rgblinkPort) || RGBLINK_PORT,
+    atemHost:        atemHost    || '192.168.10.240',
+    vmixHost:        vmixHost    || '127.0.0.1',
+    vmixPort:        parseInt(vmixPort) || 8099,
+    oseeHost:        oseeHost    || '192.168.1.100',
+    rolandHost:      rolandHost  || '192.168.0.1',
+    rolandPort:      parseInt(rolandPort) || 80,
+    rolandInputs:    parseInt(rolandInputs) || 8,
+    tricasterHost:   tricasterHost || '192.168.1.10',
+    tricasterPort:   parseInt(tricasterPort) || 80,
+    tricasterInputs: parseInt(tricasterInputs) || 8,
+    avmatrixHost:    avmatrixHost || '192.168.1.110',
+    avmatrixInputs:  parseInt(avmatrixInputs) || 4,
+    tallyUrl:        tallyUrl    || 'https://tallycomm.com',
+    tallyRoom:       tallyRoom   || '',
+    tallyApiKey:     tallyApiKey || ''
   }
 
   manualDisconnect = false
@@ -815,14 +1545,22 @@ app.post('/api/connect', async (req, res) => {
   rgblinkDisconnect()
   atemDisconnect()
   vmixDisconnect()
+  oseeDisconnect()
+  rolandDisconnect()
+  tricasterDisconnect()
+  avmatrixDisconnect()
 
   Object.assign(state, { connected: false, connecting: false, error: null, scenes: [], pgmScene: null, pvwScene: null })
 
   try {
-    if (switcher === 'atem')         await atemConnect(state.config)
-    else if (switcher === 'vmix')    await vmixConnect(state.config)
-    else if (switcher === 'rgblink') await rgblinkConnect(state.config)
-    else                             await obsConnect(state.config)
+    if (switcher === 'atem')           await atemConnect(state.config)
+    else if (switcher === 'vmix')      await vmixConnect(state.config)
+    else if (switcher === 'rgblink')   await rgblinkConnect(state.config)
+    else if (switcher === 'osee')      await oseeConnect(state.config)
+    else if (switcher === 'roland')    await rolandConnect(state.config)
+    else if (switcher === 'tricaster') await tricasterConnect(state.config)
+    else if (switcher === 'avmatrix')  await avmatrixConnect(state.config)
+    else                               await obsConnect(state.config)
     saveToDisk()
     res.json({ ok: true })
   } catch (e) {
@@ -837,6 +1575,10 @@ app.post('/api/disconnect', (req, res) => {
   rgblinkDisconnect()
   atemDisconnect()
   vmixDisconnect()
+  oseeDisconnect()
+  rolandDisconnect()
+  tricasterDisconnect()
+  avmatrixDisconnect()
   Object.assign(state, { connected: false, connecting: false, scenes: [], pgmScene: null, pvwScene: null })
   sse('status', statusPayload())
   log('Desconectado manualmente', 'warn')
@@ -869,6 +1611,15 @@ app.get('/api/status', (req, res) => res.json({
     atemHost:    state.config.atemHost,
     vmixHost:    state.config.vmixHost,
     vmixPort:    state.config.vmixPort,
+    oseeHost:    state.config.oseeHost,
+    rolandHost:  state.config.rolandHost,
+    rolandPort:  state.config.rolandPort,
+    rolandInputs: state.config.rolandInputs,
+    tricasterHost: state.config.tricasterHost,
+    tricasterPort: state.config.tricasterPort,
+    tricasterInputs: state.config.tricasterInputs,
+    avmatrixHost:   state.config.avmatrixHost,
+    avmatrixInputs: state.config.avmatrixInputs,
     tallyUrl:    state.config.tallyUrl,
     tallyRoom:   state.config.tallyRoom,
     tallyApiKey: state.config.tallyApiKey,
@@ -885,7 +1636,7 @@ loadSaved()
 app.listen(LISTEN_PORT, '127.0.0.1', () => {
   if (!isElectron) {
     console.log('\n╔════════════════════════════════════╗')
-    console.log('║ TallyBridge v1.4.0 — TallyComm       ║')
+    console.log('║ TallyBridge v1.5.0 — TallyComm       ║')
     console.log(`║ http://localhost:${LISTEN_PORT}               ║`)
     console.log('╚════════════════════════════════════╝\n')
     const url = `http://localhost:${LISTEN_PORT}`
@@ -901,6 +1652,10 @@ app.listen(LISTEN_PORT, '127.0.0.1', () => {
     const connectFn = sw === 'atem' ? atemConnect
       : sw === 'vmix' ? vmixConnect
       : sw === 'rgblink' ? rgblinkConnect
+      : sw === 'osee' ? oseeConnect
+      : sw === 'roland' ? rolandConnect
+      : sw === 'tricaster' ? tricasterConnect
+      : sw === 'avmatrix' ? avmatrixConnect
       : obsConnect
     connectFn(state.config).catch(e => {
       log('Auto-conexión fallida: ' + e.message, 'warn')

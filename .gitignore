@@ -9,5 +9,7 @@ tallybridge-config.json
 CLAUDE.md
 # Screenshots sueltos de sesiones de QA local
 *.png
+# …pero los brand logos del switcher selector SÍ se versionan (pasan por electron-builder)
+!assets/brand/*.png
 # Playwright MCP temp
 .playwright-mcp/

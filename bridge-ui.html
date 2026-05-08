@@ -70,16 +70,26 @@ select.input{-webkit-appearance:none;appearance:none;cursor:pointer;background-i
 select.input option{background:#1a1a1a;}
 
 /* SWITCHER SELECTOR */
-.switch-row{display:flex;gap:6px;flex-wrap:wrap;}
-.switch-opt{flex:1;min-width:80px;padding:10px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);cursor:pointer;text-align:center;transition:all .12s;}
-.switch-opt.active{background:var(--blu-bg);border-color:var(--blu);}
-.switch-opt.active-rgb{background:rgba(255,59,59,.08);border-color:var(--red);}
-.switch-opt-icon{font-size:18px;display:block;margin-bottom:3px;}
-.switch-opt-name{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--txt2);}
-.switch-opt.active .switch-opt-name,.switch-opt.active-rgb .switch-opt-name{color:var(--txt);}
-.switch-opt-badge{font-family:var(--mono);font-size:10px;color:var(--txt4);}
+.switch-row{display:flex;gap:8px;flex-wrap:wrap;}
+.switch-row.cols-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.switch-opt{flex:1;min-width:90px;padding:14px 10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);cursor:pointer;text-align:center;transition:all .12s;color:var(--txt3);}
+.switch-opt:hover{color:var(--txt2);border-color:var(--b3);}
+.switch-opt.active{background:var(--blu-bg);border-color:var(--blu);color:var(--blu);}
+.switch-opt-icon{display:flex;align-items:center;justify-content:center;height:32px;margin-bottom:8px;}
+.switch-opt-icon svg{width:28px;height:28px;display:block;}
+.switch-opt-icon img{max-height:30px;max-width:110px;width:auto;height:auto;display:block;
+  object-fit:contain;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;pointer-events:none;
+  /* Slight desaturation when inactive to harmonize with the dim selector state. */
+  filter:brightness(.92);transition:filter .12s;}
+.switch-opt{overflow:hidden;}
+.switch-opt:hover .switch-opt-icon img,
+.switch-opt.active .switch-opt-icon img{filter:none;}
+.switch-opt-name{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--txt2);letter-spacing:.02em;}
+.switch-opt.active .switch-opt-name{color:var(--txt);}
+.switch-opt-badge{font-family:var(--mono);font-size:10px;color:var(--txt4);margin-top:1px;}
 .switch-opt.active .switch-opt-badge{color:var(--blu);}
-.switch-opt.active-rgb .switch-opt-badge{color:var(--red);}
+.cat-card{margin-bottom:10px;}
+.cat-card .form-section-label{margin-bottom:10px;}
 
 /* SETUP STEPS */
 .setup-steps{background:var(--bg);border:1px solid var(--b1);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;}
@@ -193,7 +203,7 @@ select.input option{background:#1a1a1a;}
     <div class="brand-dot" id="brand-dot"></div>
     <div>
       <div class="brand-name">TALLY<em>BRIDGE</em></div>
-      <div class="brand-ver">v1.3.2 — TallyComm</div>
+      <div class="brand-ver">v1.5.0 — TallyComm</div>
     </div>
   </div>
   <div class="topbar-right">
@@ -218,7 +228,7 @@ select.input option{background:#1a1a1a;}
     <div class="log-scroll" id="log-scroll">
       <div class="log-entry info">
         <span class="log-ts">--:--:--</span>
-        <span class="log-msg" id="log-init-msg">TallyBridge v1.3.2 started. Configure connection to begin.</span>
+        <span class="log-msg" id="log-init-msg">TallyBridge v1.5.0 started. Configure connection to begin.</span>
       </div>
     </div>
     <div class="test-panel" id="test-panel" style="display:none;">
@@ -269,7 +279,7 @@ var _i = {
   manualTest:       { en: 'MANUAL TEST',     es: 'TEST MANUAL' },
   activityLog:      { en: 'ACTIVITY LOG',    es: 'LOG DE ACTIVIDAD' },
   clear:            { en: 'CLEAR',           es: 'LIMPIAR' },
-  initMsg:          { en: 'TallyBridge v1.3.2 started. Configure connection to begin.', es: 'TallyBridge v1.3.2 iniciado. Configura la conexi\u00f3n para comenzar.' },
+  initMsg:          { en: 'TallyBridge v1.5.0 started. Configure connection to begin.', es: 'TallyBridge v1.5.0 iniciado. Configura la conexi\u00f3n para comenzar.' },
   enterRoom:        { en: 'You must enter a room name', es: 'Debes ingresar el nombre de sala' },
   enterApiKey:      { en: 'API Key is required. Get it from your event dashboard.', es: 'La API Key es obligatoria. Obtenela desde el dashboard del evento.' },
   selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
@@ -326,7 +336,69 @@ var _i = {
   rgbPortLabel:     { en: 'UDP PORT',        es: 'PUERTO UDP' },
   rgbPortHint:      { en: 'Default port: 1000 \u2014 don\'t change unless modified on the device', es: 'Puerto por defecto: 1000 \u2014 no cambiar a menos que lo hayas modificado en el dispositivo' },
   rgbColLabel:      { en: 'RGBLINK INPUT',   es: 'ENTRADA RGBLINK' },
-  rgbMapHint:       { en: 'Input 1 = button 1 on RGBlink, etc. Auto-mapped on connect.', es: 'Input 1 = bot\u00f3n 1 del RGBlink, etc. Auto-mapeado al conectar.' }
+  rgbMapHint:       { en: 'Input 1 = button 1 on RGBlink, etc. Auto-mapped on connect.', es: 'Input 1 = bot\u00f3n 1 del RGBlink, etc. Auto-mapeado al conectar.' },
+  // Roland
+  rolandTitle:      { en: 'ROLAND SMART TALLY', es: 'ROLAND SMART TALLY' },
+  rolandGuide:      { en: 'HOW TO CONNECT THE ROLAND SWITCHER', es: 'COMO CONECTAR EL SWITCHER ROLAND' },
+  rolandStep1:      { en: 'Connect the Roland (V-60HD, V-1HD, V-160HD, VR-1HD, VR-50HD MKII, VR-120HD, P-20HD\u2026) to your router/switch or directly to this computer via <strong>Ethernet (RJ45)</strong>', es: 'Conecta el Roland (V-60HD, V-1HD, V-160HD, VR-1HD, VR-50HD MKII, VR-120HD, P-20HD\u2026) al router/switch o directamente a esta computadora con <strong>Ethernet (RJ45)</strong>' },
+  rolandStep2:      { en: 'On the device <strong>System Menu \u2192 LAN</strong>, set a fixed IP (or DHCP) and note it down', es: 'En <strong>Men\u00fa del sistema \u2192 LAN</strong>, asigna una IP fija (o DHCP) y an\u00f3tala' },
+  rolandStep3:      { en: 'Make sure <strong>Smart Tally</strong> is enabled (default ON on V-60HD, V-160HD, VR-50HD MKII, VR-120HD)', es: 'Aseg\u00farate de que <strong>Smart Tally</strong> est\u00e9 habilitado (default ON en V-60HD, V-160HD, VR-50HD MKII, VR-120HD)' },
+  rolandStep4:      { en: 'Make sure this computer is on the <strong>same network and subnet</strong> as the Roland', es: 'Aseg\u00farate de que esta computadora est\u00e9 en la <strong>misma red y subnet</strong> que el Roland' },
+  rolandStep5:      { en: 'Enter the IP and number of inputs below, then click <strong>CONNECT</strong> \u2014 TCP port <code>80</code> by default, no password needed', es: 'Ingresa la IP y el n\u00famero de entradas abajo, luego click <strong>CONECTAR</strong> \u2014 puerto TCP <code>80</code> por defecto, sin contrase\u00f1a' },
+  rolandIpLabel:    { en: 'ROLAND IP',       es: 'IP DEL ROLAND' },
+  rolandIpHint:     { en: 'IP shown on the device front panel or System Menu \u2192 LAN', es: 'IP que aparece en el panel frontal o en Men\u00fa \u2192 LAN' },
+  rolandPortLabel:  { en: 'HTTP PORT',       es: 'PUERTO HTTP' },
+  rolandPortHint:   { en: 'Default: 80 \u2014 don\'t change unless modified on the device', es: 'Por defecto: 80 \u2014 no cambiar a menos que lo hayas modificado en el equipo' },
+  rolandInputsLabel:{ en: 'NUMBER OF INPUTS', es: 'N\u00daMERO DE ENTRADAS' },
+  rolandInputsHint: { en: '4 (V-1HD, VR-1HD) \u00b7 6 (V-60HD) \u00b7 8 (V-8HD-style) \u00b7 12 (V-160HD) \u00b7 20 (VR-120HD)', es: '4 (V-1HD, VR-1HD) \u00b7 6 (V-60HD) \u00b7 8 (V-8HD-style) \u00b7 12 (V-160HD) \u00b7 20 (VR-120HD)' },
+  rolandColLabel:   { en: 'ROLAND INPUT',    es: 'ENTRADA ROLAND' },
+  rolandMapHint:    { en: 'Physical inputs polled via Smart Tally HTTP. Auto-mapped on connect.', es: 'Entradas f\u00edsicas consultadas v\u00eda Smart Tally HTTP. Auto-mapeado al conectar.' },
+  // TriCaster
+  tricasterTitle:   { en: 'NEWTEK / VIZRT TRICASTER', es: 'NEWTEK / VIZRT TRICASTER' },
+  tricasterGuide:   { en: 'HOW TO CONNECT THE TRICASTER', es: 'COMO CONECTAR EL TRICASTER' },
+  tricasterStep1:   { en: 'Connect the TriCaster (TC1, TC2 Elite, TC Mini, VMC1, 410 Plus, 8000 Vectar) to your network via <strong>Ethernet</strong>', es: 'Conecta el TriCaster (TC1, TC2 Elite, TC Mini, VMC1, 410 Plus, 8000 Vectar) a la red via <strong>Ethernet</strong>' },
+  tricasterStep2:   { en: 'On the TriCaster: <strong>Home \u2192 Administration \u2192 Admin Tools \u2192 LivePanel</strong> and <strong>disable the password</strong> (required for the v1 API to be accessible without auth)', es: 'En el TriCaster: <strong>Home \u2192 Administration \u2192 Admin Tools \u2192 LivePanel</strong> y <strong>deshabilita el password</strong> (requerido para que la API v1 sea accesible sin auth)' },
+  tricasterStep3:   { en: 'Note the TriCaster IP from <strong>Admin Tools \u2192 Network</strong> or the System Status panel', es: 'Anota la IP del TriCaster en <strong>Admin Tools \u2192 Network</strong> o el panel System Status' },
+  tricasterStep4:   { en: 'Make sure this computer is on the <strong>same network and subnet</strong> as the TriCaster', es: 'Aseg\u00farate de que esta computadora est\u00e9 en la <strong>misma red y subnet</strong> que el TriCaster' },
+  tricasterStep5:   { en: 'Enter the IP and number of inputs below, then click <strong>CONNECT</strong> \u2014 uses HTTP/WS on port <code>80</code>, no password', es: 'Ingresa la IP y el n\u00famero de entradas abajo, luego click <strong>CONECTAR</strong> \u2014 usa HTTP/WS en puerto <code>80</code>, sin contrase\u00f1a' },
+  tricasterStep6:   { en: 'Note: TriCaster does not expose tally for sources <strong>inside M/E layers</strong> via this API (Vizrt-acknowledged). Top-level INPUT tally works perfectly.', es: 'Nota: el TriCaster no expone tally de fuentes <strong>dentro de capas M/E</strong> via esta API (limitaci\u00f3n reconocida por Vizrt). El tally de INPUTs top-level funciona sin problema.' },
+  tricasterIpLabel: { en: 'TRICASTER IP',    es: 'IP DEL TRICASTER' },
+  tricasterIpHint:  { en: 'IP shown in Admin Tools \u2192 Network', es: 'IP que aparece en Admin Tools \u2192 Network' },
+  tricasterPortLabel:{ en: 'HTTP PORT',      es: 'PUERTO HTTP' },
+  tricasterPortHint:{ en: 'Default: 80 \u2014 don\'t change unless your TriCaster has a custom web port', es: 'Por defecto: 80 \u2014 no cambiar a menos que el TriCaster use un puerto web custom' },
+  tricasterInputsLabel:{ en: 'NUMBER OF INPUTS', es: 'N\u00daMERO DE ENTRADAS' },
+  tricasterInputsHint:{ en: '4 (TC Mini) \u00b7 8 (TC1 / TC2 Elite / 410 Plus) \u00b7 12 / 16 (VMC1 / 8000 Vectar)', es: '4 (TC Mini) \u00b7 8 (TC1 / TC2 Elite / 410 Plus) \u00b7 12 / 16 (VMC1 / 8000 Vectar)' },
+  tricasterColLabel:{ en: 'TRICASTER INPUT', es: 'ENTRADA TRICASTER' },
+  tricasterMapHint: { en: 'Physical inputs (INPUT1..N) read via /v1/dictionary?key=shortcut_states. Push notifications via /v1/change_notifications WebSocket. Auto-mapped on connect.', es: 'Entradas f\u00edsicas (INPUT1..N) le\u00eddas via /v1/dictionary?key=shortcut_states. Notificaciones push via WebSocket /v1/change_notifications. Auto-mapeado al conectar.' },
+  // AVMatrix
+  avmatrixTitle:    { en: 'AVMATRIX',         es: 'AVMATRIX' },
+  avmatrixGuide:    { en: 'HOW TO CONNECT THE AVMATRIX SWITCHER', es: 'COMO CONECTAR EL SWITCHER AVMATRIX' },
+  avmatrixStep1:    { en: 'Connect the AVMatrix (HVS0402U, HVS0403U, PVS0403U, VS0601, MVS0401, PVS0613U, etc.) to your network via <strong>Ethernet</strong>', es: 'Conecta el AVMatrix (HVS0402U, HVS0403U, PVS0403U, VS0601, MVS0401, PVS0613U, etc.) a la red via <strong>Ethernet</strong>' },
+  avmatrixStep2:    { en: 'On the device <strong>Menu \u2192 Network</strong>, set a fixed IP and enable <strong>PC Control</strong> if available', es: 'En <strong>Men\u00fa \u2192 Network</strong>, asigna una IP fija y habilita <strong>PC Control</strong> si est\u00e1 disponible' },
+  avmatrixStep3:    { en: 'Make sure this computer is on the <strong>same network and subnet</strong> as the switcher', es: 'Aseg\u00farate de que esta computadora est\u00e9 en la <strong>misma red y subnet</strong> que el switcher' },
+  avmatrixStep4:    { en: 'Enter the IP and number of inputs below \u2014 TallyBridge talks UDP on port <code>19523</code> (TX) and listens on <code>19522</code> (RX). No password needed', es: 'Ingresa la IP y el n\u00famero de entradas abajo \u2014 TallyBridge habla UDP en puerto <code>19523</code> (TX) y escucha en <code>19522</code> (RX). Sin contrase\u00f1a' },
+  avmatrixStep5:    { en: 'Click <strong>CONNECT</strong>. The switcher will dump current PGM/PVW state and push changes in real time.', es: 'Click <strong>CONECTAR</strong>. El switcher reportar\u00e1 el estado PGM/PVW actual y enviar\u00e1 cambios en tiempo real.' },
+  avmatrixIpLabel:  { en: 'AVMATRIX IP',     es: 'IP DEL AVMATRIX' },
+  avmatrixIpHint:   { en: 'IP shown in the switcher\'s Network menu', es: 'IP que aparece en el men\u00fa Network del switcher' },
+  avmatrixInputsLabel:{ en: 'NUMBER OF INPUTS', es: 'N\u00daMERO DE ENTRADAS' },
+  avmatrixInputsHint:{ en: '4 (HVS0402U/0403U, PVS0403U, MVS0401) \u00b7 6 (VS0601, PVS0605U) \u00b7 13 (PVS0613U)', es: '4 (HVS0402U/0403U, PVS0403U, MVS0401) \u00b7 6 (VS0601, PVS0605U) \u00b7 13 (PVS0613U)' },
+  avmatrixColLabel: { en: 'AVMATRIX INPUT',  es: 'ENTRADA AVMATRIX' },
+  avmatrixMapHint:  { en: 'Physical inputs received via UDP push from the switcher. Auto-mapped on connect.', es: 'Entradas f\u00edsicas recibidas v\u00eda UDP push desde el switcher. Auto-mapeado al conectar.' },
+  // Categories
+  catStreaming:     { en: 'STREAMING SOFTWARE', es: 'SOFTWARE DE STREAMING' },
+  catSwitcher:      { en: 'SWITCHER', es: 'SWITCHER' },
+  // Osee
+  oseeTitle:        { en: 'OSEE GOSTREAM',   es: 'OSEE GOSTREAM' },
+  oseeGuide:        { en: 'HOW TO CONNECT THE OSEE GOSTREAM', es: 'COMO CONECTAR EL OSEE GOSTREAM' },
+  oseeStep1:        { en: 'Connect the GoStream (Deck / Duet / Duet 8 ISO) to your router/switch or directly to this computer via <strong>Ethernet cable (RJ45)</strong>', es: 'Conecta el GoStream (Deck / Duet / Duet 8 ISO) al router/switch o directamente a esta computadora con <strong>cable Ethernet (RJ45)</strong>' },
+  oseeStep2:        { en: 'On the device <strong>Menu</strong> go to <strong>Network Settings</strong> and read the current <strong>IP address</strong>', es: 'En el <strong>Men\u00fa</strong> del equipo entra a <strong>Network Settings</strong> y anota la <strong>IP actual</strong>' },
+  oseeStep3:        { en: 'Make sure firmware is <strong>v2.3.0 or higher</strong> (Deck / Duet) or <strong>v2.1.0+</strong> (Duet 8 ISO) \u2014 earlier firmware lacks the tally protocol', es: 'Verifica que el firmware sea <strong>v2.3.0 o superior</strong> (Deck / Duet) o <strong>v2.1.0+</strong> (Duet 8 ISO) \u2014 versiones anteriores no exponen el protocolo de tally' },
+  oseeStep4:        { en: 'Make sure this computer is on the <strong>same network and subnet</strong> as the GoStream', es: 'Aseg\u00farate de que esta computadora est\u00e9 en la <strong>misma red y subnet</strong> que el GoStream' },
+  oseeStep5:        { en: 'Enter the IP below and click <strong>CONNECT</strong> \u2014 TCP port <code>19010</code> is fixed, no password needed. TallyBridge auto-maps Input 1 \u2192 CAM 1, etc.', es: 'Ingresa la IP abajo y click <strong>CONECTAR</strong> \u2014 el puerto TCP <code>19010</code> es fijo, no requiere contrase\u00f1a. TallyBridge auto-mapea Input 1 \u2192 CAM 1, etc.' },
+  oseeIpLabel:      { en: 'GOSTREAM IP',     es: 'IP DEL GOSTREAM' },
+  oseeIpHint:       { en: 'IP shown on the GoStream display (Menu \u2192 Network)', es: 'IP que aparece en la pantalla del GoStream (Men\u00fa \u2192 Network)' },
+  oseeColLabel:     { en: 'GOSTREAM INPUT',  es: 'ENTRADA GOSTREAM' },
+  oseeMapHint:      { en: 'Physical inputs (1\u20134 on Deck/Duet, 1\u20138 on Duet 8 ISO). Auto-mapped on connect.', es: 'Entradas f\u00edsicas (1\u20134 en Deck/Duet, 1\u20138 en Duet 8 ISO). Auto-mapeado al conectar.' }
 }
 
 function t(k) { return (_i[k] && _i[k][_lang]) || k }
@@ -385,6 +457,15 @@ function onStatus(d) {
     if (d.savedConfig.atemHost)    ui.savedAtemHost    = d.savedConfig.atemHost
     if (d.savedConfig.vmixHost)    ui.savedVmixHost    = d.savedConfig.vmixHost
     if (d.savedConfig.vmixPort)    ui.savedVmixPort    = d.savedConfig.vmixPort
+    if (d.savedConfig.oseeHost)    ui.savedOseeHost    = d.savedConfig.oseeHost
+    if (d.savedConfig.rolandHost)  ui.savedRolandHost  = d.savedConfig.rolandHost
+    if (d.savedConfig.rolandPort)  ui.savedRolandPort  = d.savedConfig.rolandPort
+    if (d.savedConfig.rolandInputs) ui.savedRolandInputs = d.savedConfig.rolandInputs
+    if (d.savedConfig.tricasterHost)   ui.savedTricasterHost   = d.savedConfig.tricasterHost
+    if (d.savedConfig.tricasterPort)   ui.savedTricasterPort   = d.savedConfig.tricasterPort
+    if (d.savedConfig.tricasterInputs) ui.savedTricasterInputs = d.savedConfig.tricasterInputs
+    if (d.savedConfig.avmatrixHost)    ui.savedAvmatrixHost    = d.savedConfig.avmatrixHost
+    if (d.savedConfig.avmatrixInputs)  ui.savedAvmatrixInputs  = d.savedConfig.avmatrixInputs
     if (d.savedConfig.tallyUrl)    ui.savedUrl         = d.savedConfig.tallyUrl
     if (d.savedConfig.tallyRoom)   ui.savedRoom        = d.savedConfig.tallyRoom
     if (d.savedConfig.tallyApiKey) ui.savedApiKey      = d.savedConfig.tallyApiKey
@@ -429,34 +510,67 @@ function renderConnect(error) {
         <p class="connect-sub">${t('connectSub')}</p>
       </div>
 
-      <div class="form-card">
-        <div class="form-section-label">SWITCHER</div>
+      <div class="form-card cat-card">
+        <div class="form-section-label">${t('catStreaming')}</div>
         <div class="switch-row">
           <div class="switch-opt ${sw==='obs' ? 'active' : ''}" onclick="selectSwitcher('obs')">
-            <span class="switch-opt-icon">\ud83c\udfac</span>
+            <span class="switch-opt-icon">${brandIcon('obs')}</span>
             <div class="switch-opt-name">OBS</div>
-            <div class="switch-opt-badge">WebSocket v5</div>
-          </div>
-          <div class="switch-opt ${sw==='atem' ? 'active' : ''}" onclick="selectSwitcher('atem')">
-            <span class="switch-opt-icon">\ud83d\udcfa</span>
-            <div class="switch-opt-name">ATEM</div>
-            <div class="switch-opt-badge">${sw==='atem' ? t('selected') : 'Mini / SDI / TV Studio'}</div>
+            <div class="switch-opt-badge">${sw==='obs' ? t('selected') : 'WebSocket v5'}</div>
           </div>
           <div class="switch-opt ${sw==='vmix' ? 'active' : ''}" onclick="selectSwitcher('vmix')">
-            <span class="switch-opt-icon">\ud83c\udf9b</span>
+            <span class="switch-opt-icon">${brandIcon('vmix')}</span>
             <div class="switch-opt-name">vMix</div>
             <div class="switch-opt-badge">${sw==='vmix' ? t('selected') : 'TCP API'}</div>
           </div>
-          <div class="switch-opt ${sw==='rgblink' ? 'active-rgb' : ''}" onclick="selectSwitcher('rgblink')">
-            <span class="switch-opt-icon">\ud83d\udd34</span>
+        </div>
+      </div>
+
+      <div class="form-card cat-card">
+        <div class="form-section-label">${t('catSwitcher')}</div>
+        <div class="switch-row cols-3">
+          <div class="switch-opt ${sw==='atem' ? 'active' : ''}" onclick="selectSwitcher('atem')">
+            <span class="switch-opt-icon">${brandIcon('atem')}</span>
+            <div class="switch-opt-name">ATEM</div>
+            <div class="switch-opt-badge">${sw==='atem' ? t('selected') : 'Mini / SDI / TV Studio'}</div>
+          </div>
+          <div class="switch-opt ${sw==='tricaster' ? 'active' : ''}" onclick="selectSwitcher('tricaster')">
+            <span class="switch-opt-icon">${brandIcon('tricaster')}</span>
+            <div class="switch-opt-name">TriCaster</div>
+            <div class="switch-opt-badge">${sw==='tricaster' ? t('selected') : 'TC1 / TC2 Elite / Mini'}</div>
+          </div>
+          <div class="switch-opt ${sw==='roland' ? 'active' : ''}" onclick="selectSwitcher('roland')">
+            <span class="switch-opt-icon">${brandIcon('roland')}</span>
+            <div class="switch-opt-name">Roland</div>
+            <div class="switch-opt-badge">${sw==='roland' ? t('selected') : 'V-60HD / V-160HD / VR'}</div>
+          </div>
+          <div class="switch-opt ${sw==='osee' ? 'active' : ''}" onclick="selectSwitcher('osee')">
+            <span class="switch-opt-icon">${brandIcon('osee')}</span>
+            <div class="switch-opt-name">Osee</div>
+            <div class="switch-opt-badge">${sw==='osee' ? t('selected') : 'GoStream Deck / Duet'}</div>
+          </div>
+          <div class="switch-opt ${sw==='rgblink' ? 'active' : ''}" onclick="selectSwitcher('rgblink')">
+            <span class="switch-opt-icon">${brandIcon('rgblink')}</span>
             <div class="switch-opt-name">RGBlink</div>
             <div class="switch-opt-badge">${sw==='rgblink' ? t('selected') : 'mini / mini-pro'}</div>
+          </div>
+          <div class="switch-opt ${sw==='avmatrix' ? 'active' : ''}" onclick="selectSwitcher('avmatrix')">
+            <span class="switch-opt-icon">${brandIcon('avmatrix')}</span>
+            <div class="switch-opt-name">AVMatrix</div>
+            <div class="switch-opt-badge">${sw==='avmatrix' ? t('selected') : 'HVS / PVS / VS / MVS'}</div>
           </div>
         </div>
       </div>
 
       <div class="form-card" id="switcher-fields">
-        ${sw==='rgblink' ? renderRGBlinkFields() : sw==='atem' ? renderATEMFields() : sw==='vmix' ? renderVMixFields() : renderOBSFields()}
+        ${sw==='rgblink'    ? renderRGBlinkFields()
+          : sw==='atem'     ? renderATEMFields()
+          : sw==='vmix'     ? renderVMixFields()
+          : sw==='osee'     ? renderOseeFields()
+          : sw==='roland'   ? renderRolandFields()
+          : sw==='tricaster'? renderTricasterFields()
+          : sw==='avmatrix' ? renderAvmatrixFields()
+          : renderOBSFields()}
       </div>
 
       <div class="form-card">
@@ -500,6 +614,14 @@ function _steps(title, steps) {
   return `<div class="setup-steps"><div class="setup-steps-title">${title}</div>${
     steps.map((s, i) => `<div class="setup-step"><span class="step-num">${i+1}</span><span class="step-text">${s}</span></div>`).join('')
   }</div>`
+}
+
+// Brand-mark icons used in the switcher selector. Real brand logos served
+// from /assets/brand/*.png (transparent backgrounds, full color). Used here
+// under nominative fair use — solely to identify the products this tool
+// integrates with. Same pattern as Bitfocus Companion's module catalog.
+function brandIcon(name) {
+  return '<img src="/assets/brand/' + name + '.png" alt="' + name.toUpperCase() + '" draggable="false">'
 }
 
 function renderOBSFields() {
@@ -572,6 +694,99 @@ function renderRGBlinkFields() {
     </div>`
 }
 
+function renderOseeFields() {
+  return `
+    <div class="form-section-label">${t('oseeTitle')}</div>
+    ${_steps(t('oseeGuide'), [t('oseeStep1'), t('oseeStep2'), t('oseeStep3'), t('oseeStep4'), t('oseeStep5')])}
+    <div class="field">
+      <span class="field-label">${t('oseeIpLabel')}</span>
+      <input class="input" type="text" id="oseeHost"
+        value="${ui.savedOseeHost || '192.168.1.100'}" placeholder="192.168.1.100"
+        autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span class="field-hint">${t('oseeIpHint')}</span>
+    </div>`
+}
+
+function renderAvmatrixFields() {
+  var savedInputs = ui.savedAvmatrixInputs || 4
+  var inputOpts = [4, 6, 8, 13].map(function(n) {
+    return '<option value="' + n + '"' + (n === savedInputs ? ' selected' : '') + '>' + n + '</option>'
+  }).join('')
+  return `
+    <div class="form-section-label">${t('avmatrixTitle')}</div>
+    ${_steps(t('avmatrixGuide'), [t('avmatrixStep1'), t('avmatrixStep2'), t('avmatrixStep3'), t('avmatrixStep4'), t('avmatrixStep5')])}
+    <div class="field">
+      <span class="field-label">${t('avmatrixIpLabel')}</span>
+      <input class="input" type="text" id="avmatrixHost"
+        value="${ui.savedAvmatrixHost || '192.168.1.110'}" placeholder="192.168.1.110"
+        autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span class="field-hint">${t('avmatrixIpHint')}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">${t('avmatrixInputsLabel')}</span>
+      <select class="input" id="avmatrixInputs" style="max-width:140px;">${inputOpts}</select>
+      <span class="field-hint">${t('avmatrixInputsHint')}</span>
+    </div>`
+}
+
+function renderTricasterFields() {
+  var savedInputs = ui.savedTricasterInputs || 8
+  var inputOpts = [4, 6, 8, 12, 16].map(function(n) {
+    return '<option value="' + n + '"' + (n === savedInputs ? ' selected' : '') + '>' + n + '</option>'
+  }).join('')
+  return `
+    <div class="form-section-label">${t('tricasterTitle')}</div>
+    ${_steps(t('tricasterGuide'), [t('tricasterStep1'), t('tricasterStep2'), t('tricasterStep3'), t('tricasterStep4'), t('tricasterStep5'), t('tricasterStep6')])}
+    <div class="field">
+      <span class="field-label">${t('tricasterIpLabel')}</span>
+      <input class="input" type="text" id="tricasterHost"
+        value="${ui.savedTricasterHost || '192.168.1.10'}" placeholder="192.168.1.10"
+        autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span class="field-hint">${t('tricasterIpHint')}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">${t('tricasterPortLabel')}</span>
+      <input class="input" type="number" id="tricasterPort"
+        value="${ui.savedTricasterPort || 80}" placeholder="80"
+        style="max-width:120px;">
+      <span class="field-hint">${t('tricasterPortHint')}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">${t('tricasterInputsLabel')}</span>
+      <select class="input" id="tricasterInputs" style="max-width:140px;">${inputOpts}</select>
+      <span class="field-hint">${t('tricasterInputsHint')}</span>
+    </div>`
+}
+
+function renderRolandFields() {
+  var savedInputs = ui.savedRolandInputs || 8
+  var inputOpts = [4, 6, 8, 12, 20].map(function(n) {
+    return '<option value="' + n + '"' + (n === savedInputs ? ' selected' : '') + '>' + n + '</option>'
+  }).join('')
+  return `
+    <div class="form-section-label">${t('rolandTitle')}</div>
+    ${_steps(t('rolandGuide'), [t('rolandStep1'), t('rolandStep2'), t('rolandStep3'), t('rolandStep4'), t('rolandStep5')])}
+    <div class="field">
+      <span class="field-label">${t('rolandIpLabel')}</span>
+      <input class="input" type="text" id="rolandHost"
+        value="${ui.savedRolandHost || '192.168.0.1'}" placeholder="192.168.0.1"
+        autocorrect="off" autocapitalize="off" spellcheck="false">
+      <span class="field-hint">${t('rolandIpHint')}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">${t('rolandPortLabel')}</span>
+      <input class="input" type="number" id="rolandPort"
+        value="${ui.savedRolandPort || 80}" placeholder="80"
+        style="max-width:120px;">
+      <span class="field-hint">${t('rolandPortHint')}</span>
+    </div>
+    <div class="field">
+      <span class="field-label">${t('rolandInputsLabel')}</span>
+      <select class="input" id="rolandInputs" style="max-width:140px;">${inputOpts}</select>
+      <span class="field-hint">${t('rolandInputsHint')}</span>
+    </div>`
+}
+
 function selectSwitcher(sw) {
   ui.selectedSwitcher = sw
   renderConnect(null)
@@ -581,12 +796,12 @@ function selectSwitcher(sw) {
 function renderConnected() {
   const ma = document.getElementById('main-area')
   const swType = window._lastConfig?.switcher || 'obs'
-  const switcherNames = { obs: 'OBS', rgblink: 'RGBLINK MINI', atem: 'ATEM', vmix: 'VMIX' }
+  const switcherNames = { obs: 'OBS', rgblink: 'RGBLINK MINI', atem: 'ATEM', vmix: 'VMIX', osee: 'OSEE GOSTREAM', roland: 'ROLAND SMART TALLY', tricaster: 'TRICASTER v1', avmatrix: 'AVMATRIX' }
   const switcherLabel = '\u25cf ' + t('connectedTo') + ' ' + (switcherNames[swType] || 'OBS')
 
-  const colLabels = { obs: t('obsColLabel'), rgblink: t('rgbColLabel'), atem: t('atemColLabel'), vmix: t('vmixColLabel') }
-  const mapTitles = { obs: t('obsMapTitle'), rgblink: t('atemMapTitle'), atem: t('atemMapTitle'), vmix: t('atemMapTitle') }
-  const mapHints  = { obs: t('obsMapHint'), rgblink: t('rgbMapHint'), atem: t('atemMapHint'), vmix: t('vmixMapHint') }
+  const colLabels = { obs: t('obsColLabel'), rgblink: t('rgbColLabel'), atem: t('atemColLabel'), vmix: t('vmixColLabel'), osee: t('oseeColLabel'), roland: t('rolandColLabel'), tricaster: t('tricasterColLabel'), avmatrix: t('avmatrixColLabel') }
+  const mapTitles = { obs: t('obsMapTitle'), rgblink: t('atemMapTitle'), atem: t('atemMapTitle'), vmix: t('atemMapTitle'), osee: t('atemMapTitle'), roland: t('atemMapTitle'), tricaster: t('atemMapTitle'), avmatrix: t('atemMapTitle') }
+  const mapHints  = { obs: t('obsMapHint'), rgblink: t('rgbMapHint'), atem: t('atemMapHint'), vmix: t('vmixMapHint'), osee: t('oseeMapHint'), roland: t('rolandMapHint'), tricaster: t('tricasterMapHint'), avmatrix: t('avmatrixMapHint') }
 
   if (!document.getElementById('connected-content')) {
     ma.innerHTML = `
@@ -737,6 +952,15 @@ async function doConnect() {
     atemHost:    document.getElementById('atemHost')?.value.trim()    || '192.168.10.240',
     vmixHost:    document.getElementById('vmixHost')?.value.trim()    || '127.0.0.1',
     vmixPort:    document.getElementById('vmixPort')?.value           || '8099',
+    oseeHost:    document.getElementById('oseeHost')?.value.trim()    || '192.168.1.100',
+    rolandHost:  document.getElementById('rolandHost')?.value.trim()  || '192.168.0.1',
+    rolandPort:  document.getElementById('rolandPort')?.value         || '80',
+    rolandInputs: document.getElementById('rolandInputs')?.value      || '8',
+    tricasterHost:  document.getElementById('tricasterHost')?.value.trim() || '192.168.1.10',
+    tricasterPort:  document.getElementById('tricasterPort')?.value        || '80',
+    tricasterInputs: document.getElementById('tricasterInputs')?.value     || '8',
+    avmatrixHost:   document.getElementById('avmatrixHost')?.value.trim()  || '192.168.1.110',
+    avmatrixInputs: document.getElementById('avmatrixInputs')?.value       || '4',
     tallyRoom:   document.getElementById('tallyRoom')?.value.trim()   || '',
     tallyUrl:    document.getElementById('tallyUrl')?.value.trim()    || 'https://tallycomm.com',
     tallyApiKey: document.getElementById('tallyApiKey')?.value.trim() || ''
