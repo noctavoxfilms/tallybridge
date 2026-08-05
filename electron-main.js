@@ -16,6 +16,8 @@ let mainWindow = null
 let tray       = null
 let serverReady = false
 
+let bridgeModule = null   // expone shutdownTally() para apagar el tally al salir
+
 // ── Start bridge server ──────────────────────────────────────
 function startServer() {
   return new Promise((resolve, reject) => {
@@ -23,7 +25,7 @@ function startServer() {
       // Load bridge.js — it calls app.listen internally
       // We override PORT via env so it doesn't conflict
       process.env.TALLYBRIDGE_PORT = PORT
-      require('./bridge.js')
+      bridgeModule = require('./bridge.js')
 
       // Poll until server responds
       let attempts = 0
@@ -212,4 +214,15 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => { app.isQuiting = true })
+let _tallyCleared = false
+app.on('before-quit', async (e) => {
+  app.isQuiting = true
+  // Antes de irnos, apagar el tally: si no, la cámara que estaba en PGM se
+  // queda en rojo en el teléfono del operador sin nadie switcheando detrás.
+  // Se cancela la salida una sola vez para que los POST alcancen a salir.
+  if (_tallyCleared || !bridgeModule || !bridgeModule.shutdownTally) return
+  e.preventDefault()
+  _tallyCleared = true
+  try { await bridgeModule.shutdownTally('quit') } catch {}
+  app.quit()
+})

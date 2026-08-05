@@ -1248,6 +1248,14 @@ function avmatrixDisconnect() {
 
 // ── Auto-reconnect ─────────────────────────────────────────────
 function scheduleReconnect(delay = 4000) {
+  // Broadcast safety: we just lost the switcher, so we no longer know what is
+  // on air. Every automatic disconnect funnels through here, and none of them
+  // used to tell TallyComm anything — a camera that was on PGM stayed lit red
+  // on the operator's phone for as long as the switcher was gone. A tally
+  // system has to fail dark: if we can't know, nobody is shown on air.
+  // Idempotent: updateTallyState dedups when the state is already null, so the
+  // exponential-backoff recursion below only sends the clear once.
+  updateTallyState(null, null)
   if (reconnectTimer) return
   if (!state.config.tallyRoom) return
   const sw = state.config.switcher || 'obs'
@@ -1570,6 +1578,12 @@ app.post('/api/connect', async (req, res) => {
 
 app.post('/api/disconnect', (req, res) => {
   manualDisconnect = true
+  // Turn the lights off BEFORE tearing anything down. The Object.assign below
+  // nulls pgmScene/pvwScene straight on the state object, which bypasses
+  // updateTallyState() — the only function that actually sends. That left the
+  // operators' phones lit red with the bridge convinced nothing was on air,
+  // so not even a later reconnect corrected it.
+  updateTallyState(null, null)
   if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
   if (obsSocket) { try { obsSocket.terminate() } catch {}; obsSocket = null }
   rgblinkDisconnect()
@@ -1662,3 +1676,26 @@ app.listen(LISTEN_PORT, '127.0.0.1', () => {
     })
   }
 })
+
+// ── Apagado: no dejar ninguna cámara encendida ────────────────
+// Cerrar la app sin pulsar DESCONECTAR dejaba lo que estuviera en PGM en rojo
+// en el teléfono del operador para siempre: ni la app ni las señales del SO le
+// decían nada a TallyComm. Es mejor esfuerzo — se lanzan los clear y se le da
+// un momento a los POST antes de que el proceso desaparezca.
+let _shuttingDown = false
+async function shutdownTally(reason = 'exit') {
+  if (_shuttingDown) return
+  _shuttingDown = true
+  if (!state.pgmScene && !state.pvwScene) return
+  log(`Apagando tally antes de salir (${reason})`, 'warn')
+  updateTallyState(null, null)
+  await new Promise(r => setTimeout(r, 600))
+}
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, async () => {
+    try { await shutdownTally(sig) } catch {}
+    process.exit(0)
+  })
+}
+
+module.exports = { shutdownTally }
