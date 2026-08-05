@@ -12,7 +12,13 @@ jobs:
   # (DigiCert/Sectigo, ~$200/año) que no está incluido en Apple Dev Program.
   # Usuarios Windows ven SmartScreen "Unknown publisher" pero funciona.
   build-windows:
-    runs-on: windows-latest
+    # Pinned, NOT windows-latest. GitHub moved that label to windows-2025, whose
+    # Visual Studio install lacks the "Desktop development with C++" workload, so
+    # node-gyp can no longer rebuild atem-connection's native @julusian/freetype2
+    # for the Electron ABI. v1.5.0 built fine in May on the older image; v1.5.1
+    # was the first tag to hit the new one and the whole release was blocked
+    # because the publish job waits on both platforms.
+    runs-on: windows-2022
     steps:
       - name: Checkout
         uses: actions/checkout@v4
