@@ -1477,6 +1477,16 @@ function sendTally(sceneName, bus) {
   if (cam) sendTallyDirect(cam, bus)
 }
 
+// HTTP header values must be ByteString (chars 0-255). fetch() throws a cryptic
+// "Cannot convert argument to a ByteString..." TypeError deep inside itself if
+// the API key field ever ends up holding something else — e.g. pasting a log
+// line ("…", "✗") instead of the actual key from the TallyComm dashboard.
+// Caught it live: that exact failure mode happened during a real session.
+function _isByteStringSafe(s) {
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 255) return false
+  return true
+}
+
 async function sendTallyDirect(camera, bus) {
   const room = state.config.tallyRoom?.trim()
   if (!room) { log('Sin sala configurada — tally ignorado', 'warn'); return }
@@ -1484,7 +1494,14 @@ async function sendTallyDirect(camera, bus) {
   const url  = `${state.config.tallyUrl.replace(/\/$/, '')}/api/tally`
   const headers = { 'Content-Type': 'application/json' }
   // Add auth header if server requires TALLY_SECRET — empty string means no auth
-  if (state.config.tallyApiKey) headers['x-tallycomm-key'] = state.config.tallyApiKey
+  if (state.config.tallyApiKey) {
+    if (!_isByteStringSafe(state.config.tallyApiKey)) {
+      log('API Key inválida (contiene caracteres no válidos) — copiá la clave desde SWITCHER API KEY en el dashboard del evento, no otro texto', 'error')
+      sse('tally', { ...body, ok: false, error: 'invalid_api_key_chars' })
+      return
+    }
+    headers['x-tallycomm-key'] = state.config.tallyApiKey
+  }
   try {
     const res = await fetch(url, {
       method: 'POST',
