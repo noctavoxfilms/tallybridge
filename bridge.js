@@ -570,8 +570,18 @@ function vmixDisconnect() {
 let oseeSocket = null
 let oseeBuffer = Buffer.alloc(0)
 let oseeSources = []       // source IDs discovered via inputList, in device order
+let oseeKeepalive = null
+let oseeRxAt = 0           // last time the switcher sent us anything
 const OSEE_PORT    = 19010
 const OSEE_HEAD    = Buffer.from([0xEB, 0xA6, 0x00])
+// The switcher only pushes on change, so silence is normal and can't itself
+// signal a dead link — we have to poll. Changing IO Settings > Input Connection
+// Assignment reboots the switcher's input stage, and it does not always close
+// the TCP connection cleanly: without this the socket stays half-open, Node
+// never fires 'close', and the bridge reports "connected" forever while nothing
+// works. Ask for something cheap every 5s and give up after 15s of silence.
+const OSEE_KEEPALIVE_MS  = 5000
+const OSEE_RX_TIMEOUT_MS = 15000
 
 // Known source IDs, for readable labels. Anything not listed still works —
 // it just shows as its raw ID. From the Osee protocol spec + Companion module.
@@ -673,6 +683,28 @@ function oseeConnect(cfg) {
       oseeSources = []
       sse('status', statusPayload())
 
+      // Detect a switcher that went away without closing the socket (see the
+      // constants above). OS-level keepalive catches the plainly dead cases;
+      // the poll below catches the ones where the socket survives but the
+      // switcher stopped answering.
+      try { sock.setKeepAlive(true, 10000) } catch (e) {}
+      oseeRxAt = Date.now()
+      if (oseeKeepalive) clearInterval(oseeKeepalive)
+      oseeKeepalive = setInterval(() => {
+        if (!oseeSocket || oseeSocket.destroyed) return
+        if (Date.now() - oseeRxAt > OSEE_RX_TIMEOUT_MS) {
+          log('Osee: sin respuesta por 15s — reconectando', 'warn')
+          oseeDisconnect()
+          if (state.connected) {
+            state.connected = false
+            sse('status', statusPayload())
+            if (!manualDisconnect) scheduleReconnect()
+          }
+          return
+        }
+        oseeSend({ id: 'pgmIndex', type: 'get' })   // cheap, and re-syncs PGM
+      }, OSEE_KEEPALIVE_MS)
+
       // Ask what this switcher is and which sources it exposes, then for the
       // current bus state. The switcher answers each with type 'res' and pushes
       // 'pus' on every later change.
@@ -685,6 +717,7 @@ function oseeConnect(cfg) {
     })
 
     sock.on('data', (chunk) => {
+      oseeRxAt = Date.now()   // proof of life for the watchdog above
       oseeBuffer = oseeBuffer.length ? Buffer.concat([oseeBuffer, chunk]) : chunk
       // Guard against runaway buffer (#8 vMix-style)
       if (oseeBuffer.length > 65536) oseeBuffer = oseeBuffer.slice(-8192)
@@ -789,6 +822,7 @@ function _handleOseeMessage(msg) {
 }
 
 function oseeDisconnect() {
+  if (oseeKeepalive) { clearInterval(oseeKeepalive); oseeKeepalive = null }
   if (oseeSocket) {
     try { oseeSocket.destroy() } catch {}
     oseeSocket = null
