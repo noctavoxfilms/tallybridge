@@ -189,14 +189,17 @@ jobs:
             ### Descargas
             - **Mac (Apple Silicon):** `TallyBridge-*-arm64.dmg` — firmado + notarizado por Apple
             - **Mac (Intel):** `TallyBridge-*.dmg` — firmado + notarizado por Apple
-            - **Windows (x64):** `TallyBridge.Setup.*.exe`
-            - **Windows (ARM64):** `TallyBridge.Setup.*-arm64.exe`
+            - **Windows (x64 + ARM64):** `TallyBridge.Setup.*.exe` — instalador universal, detecta la arquitectura automáticamente
 
             ### Switchers soportados
             - ✅ OBS Studio (WebSocket v5)
-            - ✅ Blackmagic ATEM
             - ✅ vMix
+            - ✅ Blackmagic ATEM
+            - ✅ NewTek/Vizrt TriCaster
+            - ✅ Roland Smart Tally
+            - ✅ Osee GoStream
             - ✅ RGBlink mini
+            - ✅ AVMatrix
           files: dist/*
           draft: false
           prerelease: false
