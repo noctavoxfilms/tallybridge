@@ -609,6 +609,33 @@ const OSEE_INPUT_MODES = {
   3: '8 puertos físicos (3)'
 }
 
+// MultiSource (source ID 5001) is a composite: several inputs on screen at once.
+// Putting it on PGM reports a single source ID that is not a camera, so every
+// operator inside the composite was shown FREE while being broadcast. Track
+// which input sits in each window and whether that window is enabled, so the
+// composite can be expanded into the cameras it is actually showing.
+const OSEE_MULTISOURCE = 5001
+let oseeMsWindows = {}     // window index → { source, enabled }
+let oseeMsCount   = 0      // window count reported by the switcher
+// Last source ID reported on each bus. Declared here, with the rest of the Osee
+// state, rather than next to the function that reads them — a `let` used by a
+// handler but declared further down is a temporal-dead-zone crash waiting for
+// the day something calls it during module load.
+let oseePgmSource = null, oseePvwSource = null
+
+function _oseeExpand(sourceId) {
+  if (sourceId !== OSEE_MULTISOURCE) return oseeSources.includes(sourceId) ? [`src_${sourceId}`] : []
+  const out = []
+  for (const idx of Object.keys(oseeMsWindows)) {
+    const w = oseeMsWindows[idx]
+    if (!w || !w.enabled) continue
+    if (!oseeSources.includes(w.source)) continue
+    const key = `src_${w.source}`
+    if (!out.includes(key)) out.push(key)
+  }
+  return out
+}
+
 function crc16modbus(buf) {
   let crc = 0xFFFF
   for (let i = 0; i < buf.length; i++) {
@@ -711,6 +738,9 @@ function oseeConnect(cfg) {
       oseeSend({ id: 'deviceName', type: 'get' })
       oseeSend({ id: 'inputMode',  type: 'get' })
       oseeSend({ id: 'inputList',  type: 'get' })
+      // Window count comes back first; its handler then asks for each window's
+      // source and enabled flag, so a composite can be expanded from the start.
+      oseeSend({ id: 'multiSourceWindowCount', type: 'get' })
       oseeSend({ id: 'pgmIndex',   type: 'get' })
       oseeSend({ id: 'pvwIndex',   type: 'get' })
       resolve()
@@ -808,17 +838,41 @@ function _handleOseeMessage(msg) {
     return
   }
 
+  if (msg.id === 'multiSourceWindowCount') {
+    oseeMsCount = Number(Array.isArray(msg.value) ? msg.value[0] : msg.value) || 0
+    for (let i = 0; i < oseeMsCount; i++) {
+      oseeSend({ id: 'multiSourceWindowEnable', type: 'get', value: [i] })
+      oseeSend({ id: 'multiSourceWindowSource', type: 'get', value: [i] })
+    }
+    return
+  }
+
+  // Window state arrives as [windowIndex, value] and is pushed on every change,
+  // so the composite stays accurate while the director rearranges it live.
+  if (msg.id === 'multiSourceWindowEnable' || msg.id === 'multiSourceWindowSource') {
+    const idx = Number(msg.value[0])
+    const val = Number(msg.value[1])
+    if (!Number.isInteger(idx)) return
+    const w = oseeMsWindows[idx] || (oseeMsWindows[idx] = { source: null, enabled: false })
+    if (msg.id === 'multiSourceWindowEnable') w.enabled = !!val
+    else w.source = val
+    _oseeRefreshTally()   // a window change can put a camera on or off air
+    return
+  }
+
   if (msg.id !== 'pgmIndex' && msg.id !== 'pvwIndex') return
 
   const sourceId = Array.isArray(msg.value) ? Number(msg.value[0]) : Number(msg.value)
-  // A source counts as a camera only if the switcher listed it. Unknown or
-  // not-yet-discovered IDs clear the bus rather than guessing.
-  const key = oseeSources.includes(sourceId) ? `src_${sourceId}` : null
+  if (msg.id === 'pgmIndex') oseePgmSource = sourceId
+  else                       oseePvwSource = sourceId
+  _oseeRefreshTally()
+}
 
-  // Update only the bus this message refers to; preserve the other.
-  const newPgm = msg.id === 'pgmIndex' ? key : state.pgmScene
-  const newPvw = msg.id === 'pvwIndex' ? key : state.pvwScene
-  updateTallyState(newPgm, newPvw)
+// Resolve both buses from the last reported source IDs, expanding MultiSource
+// into the cameras it is actually showing. Unknown or undiscovered IDs resolve
+// to nothing, which clears that bus rather than guessing.
+function _oseeRefreshTally() {
+  updateTallyStateMulti(_oseeExpand(oseePgmSource), _oseeExpand(oseePvwSource))
 }
 
 function oseeDisconnect() {
@@ -829,6 +883,9 @@ function oseeDisconnect() {
   }
   oseeBuffer = Buffer.alloc(0)
   oseeSources = []   // re-discovered on the next connect; a different switcher may be behind that IP
+  oseeMsWindows = {}; oseeMsCount = 0
+  oseePgmSource = null; oseePvwSource = null
+  _lastMultiPgm = null; _lastMultiPvw = null   // force a resend after reconnecting
 }
 
 // ── Roland Smart Tally (HTTP polling) ──────────────────────────
@@ -1574,6 +1631,40 @@ function updateTallyState(newPgmKey, newPvwKey) {
   sse('status', statusPayload())
 }
 
+// Plural counterpart of updateTallyState, for sources that are genuinely more
+// than one camera: a MultiSource composite has every enabled window on air, and
+// a running transition has both sides on air. The single-key path above has to
+// clear cameras one at a time; here we hand TallyComm the whole bus and it
+// replaces it, so there is nothing to reconcile. Deliberately separate — the
+// other seven switchers keep using the single-key path untouched.
+let _lastMultiPgm = null, _lastMultiPvw = null
+function updateTallyStateMulti(pgmKeys, pvwKeys) {
+  const toCams = keys => {
+    const out = []
+    for (const k of keys || []) {
+      const cam = state.mapping[k] || 0
+      if (cam && !out.includes(cam)) out.push(cam)
+    }
+    return out.sort((a, b) => a - b)
+  }
+  const pgm = toCams(pgmKeys)
+  // A camera on PGM must never also show as PVW — same invariant the server
+  // enforces; applied here too so we don't send a request that gets ignored.
+  const pvw = toCams(pvwKeys).filter(c => !pgm.includes(c))
+
+  const pgmKey = pgm.join(','), pvwKey = pvw.join(',')
+  if (pgmKey === _lastMultiPgm && pvwKey === _lastMultiPvw) return   // dedup
+  _lastMultiPgm = pgmKey; _lastMultiPvw = pvwKey
+
+  // Keep the single-key fields populated so the existing UI cards keep working
+  state.pgmScene = (pgmKeys && pgmKeys[0]) || null
+  state.pvwScene = (pvwKeys && pvwKeys[0]) || null
+
+  sendTallyCameras(pgm, 'program')
+  sendTallyCameras(pvw, 'preview')
+  sse('status', statusPayload())
+}
+
 // ── Tally HTTP → TallyComm ──────────────────────────────────────
 function sendTally(sceneName, bus) {
   const cam = state.mapping[sceneName] || 0
@@ -1590,10 +1681,12 @@ function _isByteStringSafe(s) {
   return true
 }
 
-async function sendTallyDirect(camera, bus) {
+// Shared by both tally shapes so the API-key validation and error reporting
+// live in exactly one place.
+async function _postTally(partialBody, label) {
   const room = state.config.tallyRoom?.trim()
   if (!room) { log('Sin sala configurada — tally ignorado', 'warn'); return }
-  const body = { camera: parseInt(camera), bus, room }
+  const body = { ...partialBody, room }
   const url  = `${state.config.tallyUrl.replace(/\/$/, '')}/api/tally`
   const headers = { 'Content-Type': 'application/json' }
   // Add auth header if server requires TALLY_SECRET — empty string means no auth
@@ -1614,12 +1707,27 @@ async function sendTallyDirect(camera, bus) {
     })
     const ok = res.ok
     const statusTxt = res.status === 401 ? '401 UNAUTHORIZED — revisa API Key' : `HTTP ${res.status}`
-    log(`TALLY cam${camera} ${bus.toUpperCase()} → ${ok ? '✓ OK' : `Error ${statusTxt}`}`, ok ? 'success' : 'error')
+    log(`TALLY ${label} → ${ok ? '✓ OK' : `Error ${statusTxt}`}`, ok ? 'success' : 'error')
     sse('tally', { ...body, ok, status: res.status })
   } catch (e) {
-    log(`TALLY cam${camera} ${bus.toUpperCase()} → ${e.message}`, 'error')
+    log(`TALLY ${label} → ${e.message}`, 'error')
     sse('tally', { ...body, ok: false, error: e.message })
   }
+}
+
+// One camera, replaces the bus. What every switcher except the multi-source
+// path sends, and what Companion's actions map to.
+function sendTallyDirect(camera, bus) {
+  const cam = parseInt(camera)
+  return _postTally({ camera: cam, bus }, `cam${cam} ${bus.toUpperCase()}`)
+}
+
+// A whole bus at once. An empty list is meaningful — it means nothing is on
+// that bus — so it is still sent, which is how the last camera gets cleared.
+function sendTallyCameras(cameras, bus) {
+  if (bus === 'clear' && !cameras.length) return   // nothing to clear
+  const label = (cameras.length ? 'cam' + cameras.join('+') : 'ninguna') + ' ' + bus.toUpperCase()
+  return _postTally({ cameras, bus }, label)
 }
 
 // ── API REST ─────────────────────────────────────────────────────
