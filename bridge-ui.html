@@ -895,7 +895,7 @@ function renderSceneTable() {
     const rowCls  = isPgm ? ' pgm-row' : isPvw ? ' pvw-row' : ''
     const badge   = isPgm ? '<span class="scene-badge badge-pgm">PGM</span>' : isPvw ? '<span class="scene-badge badge-pvw">PVW</span>' : ''
     const opts    = '<option value="0"' + (!cam ? ' selected' : '') + '>\u2014 ' + t('ignore') + '</option>' +
-                    [1,2,3,4,5,6].map(n => `<option value="${n}"${cam===n?' selected':''}>CAM ${n}</option>`).join('')
+                    [1,2,3,4,5,6,7,8].map(n => `<option value="${n}"${cam===n?' selected':''}>CAM ${n}</option>`).join('')
     return `<tr class="scene-row${rowCls}">
       <td class="scene-name-cell">${esc(display)}${badge}</td>
       <td style="padding:4px 6px;">

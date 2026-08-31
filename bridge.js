@@ -15,6 +15,9 @@ const { Atem }  = require('atem-connection')
 
 const app  = express()
 const PORT = 4000
+// Highest camera number TallyComm accepts — mirrors CFG.CAM_MAX server-side.
+// Tally for anything above this is rejected, so don't auto-map that far.
+const TALLYCOMM_MAX_CAM = 8
 app.use(express.json())
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'bridge-ui.html')))
@@ -555,13 +558,33 @@ function vmixDisconnect() {
 //   len = json.length + 2 (size of JSON + size of CRC trailer)
 //   CRC computed over header(3) + len(2) + JSON.
 //
-// Source IDs: 0=Black, 1..8=IN1..IN8, others=non-camera (PGM/MP/ColorBar). Map IN N → CAM N.
+// Source IDs are NOT a contiguous 1..N range, and they vary per model. Osee's
+// own spec lists them as "IN1, IN2, IN3, IN4, …, n". A Duet 8 ISO has 8 physical
+// video inputs (4 HDMI + 4 SDI) but reports them as 1,2,3,4 and 4001,4002,4003,
+// 4004 — the second group is what the Companion module's enum labels AUX1-4.
+// This used to assume 1..8 = IN1..IN8, so anything above input 4 fell outside
+// the range, was treated as "not a camera", and *cleared* the tally instead of
+// setting it — inputs 5-8 silently did nothing. Ask the switcher for its own
+// source list (inputList) instead of guessing; that works on every model.
 
 let oseeSocket = null
 let oseeBuffer = Buffer.alloc(0)
+let oseeSources = []       // source IDs discovered via inputList, in device order
 const OSEE_PORT    = 19010
-const OSEE_INPUTS  = 8   // GoStream Duet 8 ISO ceiling; smaller models just leave 5..8 unused
 const OSEE_HEAD    = Buffer.from([0xEB, 0xA6, 0x00])
+
+// Known source IDs, for readable labels. Anything not listed still works —
+// it just shows as its raw ID. From the Osee protocol spec + Companion module.
+const OSEE_SRC_NAMES = {
+  0: 'Black', 1: 'IN1', 2: 'IN2', 3: 'IN3', 4: 'IN4',
+  1000: 'ColorBar', 1301: 'MIC1', 1302: 'MIC2',
+  2001: 'Color', 2002: 'Color2', 2301: 'Headphone',
+  3010: 'MP', 3011: 'MPK', 3020: 'MP2', 3021: 'MP2K',
+  4001: 'AUX1', 4002: 'AUX2', 4003: 'AUX3', 4004: 'AUX4',
+  5001: 'MultiSource', 9001: 'Multiview', 10010: 'PGM', 10011: 'PVW',
+  20001: 'SDIOutput', 21001: 'HDMIOutput', 21002: 'HDMIOutput2',
+  22001: 'USBOutput', 25001: 'StreamingOutput'
+}
 
 function crc16modbus(buf) {
   let crc = 0xFFFF
@@ -631,26 +654,19 @@ function oseeConnect(cfg) {
       state.connecting = false
       log('Conectado a Osee GoStream ✓', 'success')
 
-      // Build generic input list (1..8). Non-physical IDs map nowhere — handler clears them.
-      state.scenes = Array.from({ length: OSEE_INPUTS }, (_, i) => ({
-        sceneName:   `input_${i + 1}`,
-        displayName: `Input ${i + 1}`
-      }))
-      let autoMapped = 0
-      state.scenes.forEach((s, i) => {
-        if (!state.mapping[s.sceneName]) {
-          state.mapping[s.sceneName] = i + 1
-          autoMapped++
-        }
-      })
-      if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
-      sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+      // Scene list is built from inputList when the switcher answers (see
+      // _handleOseeMessage) — the set of sources differs per model, so we ask
+      // rather than assume. Until then we have nothing to map.
+      oseeSources = []
       sse('status', statusPayload())
 
-      // Initial state queries — switcher will reply with current PGM/PVW and then
-      // push spontaneously on every bus change.
-      oseeSend({ id: 'pgmIndex', type: 'get' })
-      oseeSend({ id: 'pvwIndex', type: 'get' })
+      // Ask what this switcher is and which sources it exposes, then for the
+      // current bus state. The switcher answers each with type 'res' and pushes
+      // 'pus' on every later change.
+      oseeSend({ id: 'deviceName', type: 'get' })
+      oseeSend({ id: 'inputList',  type: 'get' })
+      oseeSend({ id: 'pgmIndex',   type: 'get' })
+      oseeSend({ id: 'pvwIndex',   type: 'get' })
       resolve()
     })
 
@@ -705,14 +721,46 @@ function _processOseeBuffer() {
 }
 
 function _handleOseeMessage(msg) {
-  // msg = { id: 'pgmIndex'|'pvwIndex'|..., type: 'get'|'pus'|..., value: [N] }
+  // msg = { id: 'pgmIndex'|'pvwIndex'|'inputList'|..., type: 'res'|'pus'|..., value: [...] }
+  // 'res' answers a get, 'pus' is an unsolicited push on change. 'res' used to be
+  // dropped here, which is why the current PGM/PVW was never picked up on connect —
+  // the tally only caught up on the next switch.
   if (!msg || typeof msg !== 'object') return
+  if (msg.type !== 'res' && msg.type !== 'pus' && msg.type !== 'get') return
+
+  if (msg.id === 'deviceName') {
+    log(`Osee: ${String(Array.isArray(msg.value) ? msg.value[0] : msg.value)}`)
+    return
+  }
+
+  if (msg.id === 'inputList') {
+    // The switcher tells us its own sources — the only reliable list, since IDs
+    // are model-specific and non-contiguous (e.g. 1..4 then 4001..4004).
+    oseeSources = String(msg.value).split(',').map(Number).filter(Number.isInteger)
+    state.scenes = oseeSources.map((id, i) => ({
+      sceneName:   `src_${id}`,
+      displayName: `${i + 1} · ${OSEE_SRC_NAMES[id] || 'ID ' + id}`
+    }))
+    // Auto-map only as far as TallyComm accepts camera numbers — a switcher can
+    // expose more sources than that (media players, multiview), and mapping them
+    // would just make every tally for those a rejected request.
+    let autoMapped = 0
+    state.scenes.forEach((s, i) => {
+      if (i >= TALLYCOMM_MAX_CAM) return
+      if (!state.mapping[s.sceneName]) { state.mapping[s.sceneName] = i + 1; autoMapped++ }
+    })
+    log(`Osee expone ${oseeSources.length} fuentes: ${oseeSources.map(id => OSEE_SRC_NAMES[id] || id).join(', ')}`, 'success')
+    if (autoMapped) log(`Auto-mapeadas ${autoMapped} fuentes → cámaras`, 'success')
+    sse('scenes', { scenes: state.scenes, mapping: state.mapping })
+    return
+  }
+
   if (msg.id !== 'pgmIndex' && msg.id !== 'pvwIndex') return
-  if (msg.type !== 'get' && msg.type !== 'pus') return
 
   const sourceId = Array.isArray(msg.value) ? Number(msg.value[0]) : Number(msg.value)
-  const isPhysical = Number.isInteger(sourceId) && sourceId >= 1 && sourceId <= OSEE_INPUTS
-  const key = isPhysical ? `input_${sourceId}` : null
+  // A source counts as a camera only if the switcher listed it. Unknown or
+  // not-yet-discovered IDs clear the bus rather than guessing.
+  const key = oseeSources.includes(sourceId) ? `src_${sourceId}` : null
 
   // Update only the bus this message refers to; preserve the other.
   const newPgm = msg.id === 'pgmIndex' ? key : state.pgmScene
@@ -726,6 +774,7 @@ function oseeDisconnect() {
     oseeSocket = null
   }
   oseeBuffer = Buffer.alloc(0)
+  oseeSources = []   // re-discovered on the next connect; a different switcher may be behind that IP
 }
 
 // ── Roland Smart Tally (HTTP polling) ──────────────────────────
