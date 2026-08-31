@@ -586,6 +586,19 @@ const OSEE_SRC_NAMES = {
   22001: 'USBOutput', 25001: 'StreamingOutput'
 }
 
+// 8-input models (Duet 8 ISO) can reassign which physical HDMI/SDI port feeds
+// which source ID — IO Settings > Input Connection Assignment on the switcher.
+// Verified against real hardware: the source IDs are identical in every mode,
+// so tally routing is unaffected and nothing here needs to adapt. What moves is
+// the physical camera behind a given ID, so log the mode to make "why is cam 3
+// showing up as cam 5" diagnosable without guessing.
+const OSEE_INPUT_MODES = {
+  0: '4 puertos físicos',
+  1: '8 puertos físicos (1)',
+  2: '8 puertos físicos (2)',
+  3: '8 puertos físicos (3)'
+}
+
 function crc16modbus(buf) {
   let crc = 0xFFFF
   for (let i = 0; i < buf.length; i++) {
@@ -664,6 +677,7 @@ function oseeConnect(cfg) {
       // current bus state. The switcher answers each with type 'res' and pushes
       // 'pus' on every later change.
       oseeSend({ id: 'deviceName', type: 'get' })
+      oseeSend({ id: 'inputMode',  type: 'get' })
       oseeSend({ id: 'inputList',  type: 'get' })
       oseeSend({ id: 'pgmIndex',   type: 'get' })
       oseeSend({ id: 'pvwIndex',   type: 'get' })
@@ -730,6 +744,12 @@ function _handleOseeMessage(msg) {
 
   if (msg.id === 'deviceName') {
     log(`Osee: ${String(Array.isArray(msg.value) ? msg.value[0] : msg.value)}`)
+    return
+  }
+
+  if (msg.id === 'inputMode') {
+    const mode = Number(Array.isArray(msg.value) ? msg.value[0] : msg.value)
+    log(`Osee: asignación de entradas = ${OSEE_INPUT_MODES[mode] || 'modo ' + mode}`)
     return
   }
 
