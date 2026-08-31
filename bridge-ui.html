@@ -978,6 +978,24 @@ async function doConnect() {
     return
   }
 
+  // Any failed attempt broadcasts a 'status' SSE event, and onStatus() does a
+  // full ma.innerHTML rebuild of this form from ui.saved* (renderConnect below).
+  // ui.saved* was only ever updated from the server's persisted config (on a
+  // successful connect), so a failed attempt used to wipe whatever the user had
+  // just typed back to the last-saved (or hardcoded default) value — and any
+  // retry after that silently reconnected to the wrong host. Sync ui.saved*
+  // with what was actually submitted so a rebuild reflects this attempt, not
+  // stale disk state.
+  ui.savedObsHost = cfg.obsHost;         ui.savedObsPort = cfg.obsPort
+  ui.savedRgblinkHost = cfg.rgblinkHost; ui.savedRgblinkPort = cfg.rgblinkPort
+  ui.savedAtemHost = cfg.atemHost
+  ui.savedVmixHost = cfg.vmixHost;       ui.savedVmixPort = cfg.vmixPort
+  ui.savedOseeHost = cfg.oseeHost
+  ui.savedRolandHost = cfg.rolandHost;   ui.savedRolandPort = cfg.rolandPort;   ui.savedRolandInputs = cfg.rolandInputs
+  ui.savedTricasterHost = cfg.tricasterHost; ui.savedTricasterPort = cfg.tricasterPort; ui.savedTricasterInputs = cfg.tricasterInputs
+  ui.savedAvmatrixHost = cfg.avmatrixHost;   ui.savedAvmatrixInputs = cfg.avmatrixInputs
+  ui.savedRoom = cfg.tallyRoom;          ui.savedUrl = cfg.tallyUrl;            ui.savedApiKey = cfg.tallyApiKey
+
   window._lastConfig = cfg
   const res = await fetch('/api/connect', {
     method: 'POST',
