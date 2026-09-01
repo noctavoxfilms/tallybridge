@@ -164,7 +164,7 @@ function rgblinkConnect(cfg) {
     const host = cfg.rgblinkHost || '192.168.0.99'
     rgbNextSn  = 0
 
-    log(`Conectando a RGBlink mini en ${host}:${port}…`)
+    log(`Conectando a RGBlink mini en ${host}:${port}…`, 'info', 'logConnecting', { name:'RGBlink mini', target:`${host}:${port}` })
 
     const sock = dgram.createSocket('udp4')
     rgbSocket  = sock
@@ -236,7 +236,7 @@ function _initRgblinkScenes(host, port) {
       autoMapped++
     }
   })
-  if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success')
+  if (autoMapped) log(`Auto-mapeados ${autoMapped} inputs → cámaras`, 'success', 'logAutoMapped', { n:autoMapped })
   sse('scenes', { scenes: state.scenes, mapping: state.mapping })
 
   // Polling: solicitar estado de tally cada segundo
@@ -266,7 +266,7 @@ function handleRGBlinkMessage(buf) {
       const DAT2 = str.substr(10, 2)
       // Respuesta al handshake (68 66 01)
       if (CMD === '68' && DAT1 === '66' && DAT2 === '01') {
-        log('RGBlink: dispositivo conectado ✓', 'success')
+        log('RGBlink: dispositivo conectado ✓', 'success', 'logConnected', { name:'RGBlink mini' })
       }
     }
     return
@@ -340,7 +340,7 @@ function atemConnect(cfg) {
     sse('status', statusPayload())
 
     const host = cfg.atemHost || '192.168.10.240'
-    log(`Conectando a ATEM en ${host}:9910…`)
+    log(`Conectando a ATEM en ${host}:9910…`, 'info', 'logConnecting', { name:'ATEM', target:`${host}:9910` })
 
     const atem = new Atem()
     atemConnection = atem
@@ -380,7 +380,7 @@ function atemConnect(cfg) {
       state.connected = true
       state.connecting = false
       const model = atem.state.info.productIdentifier || 'ATEM'
-      log(`Conectado a ${model} ✓`, 'success')
+      log(`Conectado a ${model} ✓`, 'success', 'logConnected', { name:model })
 
       // Build scene list from external inputs
       const inputs = atem.state.inputs || {}
@@ -421,7 +421,7 @@ function atemConnect(cfg) {
     atem.on('disconnected', () => {
       if (state.connected) {
         state.connected = false
-        log('ATEM desconectado', 'warn')
+        log('ATEM desconectado', 'warn', 'logDisconnected', { name:'ATEM' })
         sse('status', statusPayload())
         if (!manualDisconnect) scheduleReconnect()
       }
@@ -476,7 +476,7 @@ function vmixConnect(cfg) {
 
     const host = cfg.vmixHost || '127.0.0.1'
     const port = parseInt(cfg.vmixPort) || 8099
-    log(`Conectando a vMix en ${host}:${port}…`)
+    log(`Conectando a vMix en ${host}:${port}…`, 'info', 'logConnecting', { name:'vMix', target:`${host}:${port}` })
 
     const sock = new net.Socket()
     vmixSocket = sock
@@ -506,7 +506,7 @@ function vmixConnect(cfg) {
       resolved = true
       state.connected = true
       state.connecting = false
-      log('Conectado a vMix ✓', 'success')
+      log('Conectado a vMix ✓', 'success', 'logConnected', { name:'vMix' })
 
       // Build generic input list (vMix can have many inputs)
       state.scenes = Array.from({ length: 8 }, (_, i) => ({
@@ -549,7 +549,7 @@ function vmixConnect(cfg) {
       if (!resolved) failWith(new Error('Conexión cerrada'))
       else if (state.connected) {
         state.connected = false
-        log('vMix desconectado', 'warn')
+        log('vMix desconectado', 'warn', 'logDisconnected', { name:'vMix' })
         sse('status', statusPayload())
         if (!manualDisconnect) scheduleReconnect()
       }
@@ -739,7 +739,7 @@ function oseeConnect(cfg) {
     sse('status', statusPayload())
 
     const host = cfg.oseeHost || '192.168.1.100'
-    log(`Conectando a Osee GoStream en ${host}:${OSEE_PORT}…`)
+    log(`Conectando a Osee GoStream en ${host}:${OSEE_PORT}…`, 'info', 'logConnecting', { name:'Osee GoStream', target:`${host}:${OSEE_PORT}` })
 
     const sock = new net.Socket()
     oseeSocket = sock
@@ -769,7 +769,7 @@ function oseeConnect(cfg) {
       resolved = true
       state.connected = true
       state.connecting = false
-      log('Conectado a Osee GoStream ✓', 'success')
+      log('Conectado a Osee GoStream ✓', 'success', 'logConnected', { name:'Osee GoStream' })
 
       // Scene list is built from inputList when the switcher answers (see
       // _handleOseeMessage) — the set of sources differs per model, so we ask
@@ -787,7 +787,7 @@ function oseeConnect(cfg) {
       oseeKeepalive = setInterval(() => {
         if (!oseeSocket || oseeSocket.destroyed) return
         if (Date.now() - oseeRxAt > OSEE_RX_TIMEOUT_MS) {
-          log('Osee: sin respuesta por 15s — reconectando', 'warn')
+          log('Osee: sin respuesta por 15s — reconectando', 'warn', 'logNoAnswer', { name:'Osee', secs:15 })
           oseeDisconnect()
           if (state.connected) {
             state.connected = false
@@ -838,7 +838,7 @@ function oseeConnect(cfg) {
       if (!resolved) failWith(new Error('Conexión cerrada'))
       else if (state.connected) {
         state.connected = false
-        log('Osee GoStream desconectado', 'warn')
+        log('Osee GoStream desconectado', 'warn', 'logDisconnected', { name:'Osee GoStream' })
         sse('status', statusPayload())
         if (!manualDisconnect) scheduleReconnect()
       }
@@ -884,7 +884,7 @@ function _handleOseeMessage(msg) {
 
   if (msg.id === 'inputMode') {
     const mode = Number(Array.isArray(msg.value) ? msg.value[0] : msg.value)
-    log(`Osee: asignación de entradas = ${OSEE_INPUT_MODES[mode] || 'modo ' + mode}`)
+    log(`Osee: asignación de entradas = ${OSEE_INPUT_MODES[mode] || 'modo ' + mode}`, 'info', 'logInputMode', { n: mode })
     return
   }
 
@@ -904,8 +904,8 @@ function _handleOseeMessage(msg) {
       if (i >= TALLYCOMM_MAX_CAM) return
       if (!state.mapping[s.sceneName]) { state.mapping[s.sceneName] = i + 1; autoMapped++ }
     })
-    log(`Osee expone ${oseeSources.length} fuentes: ${oseeSources.map(id => OSEE_SRC_NAMES[id] || id).join(', ')}`, 'success')
-    if (autoMapped) log(`Auto-mapeadas ${autoMapped} fuentes → cámaras`, 'success')
+    log(`Osee expone ${oseeSources.length} fuentes: ${oseeSources.map(id => OSEE_SRC_NAMES[id] || id).join(', ')}`, 'success', 'logSources', { n: oseeSources.length, list: oseeSources.map(id => OSEE_SRC_NAMES[id] || id).join(', ') })
+    if (autoMapped) log(`Auto-mapeadas ${autoMapped} fuentes → cámaras`, 'success', 'logAutoMapped', { n:autoMapped })
     sse('scenes', { scenes: state.scenes, mapping: state.mapping })
     return
   }
@@ -1005,7 +1005,7 @@ function rolandConnect(cfg) {
     const port = parseInt(cfg.rolandPort) || 80
     const nIn  = Math.max(1, Math.min(parseInt(cfg.rolandInputs) || 8, 20))
 
-    log(`Conectando a Roland Smart Tally en ${host}:${port} (${nIn} entradas)…`)
+    log(`Conectando a Roland Smart Tally en ${host}:${port} (${nIn} entradas)…`, 'info', 'logConnecting', { name:'Roland Smart Tally', target:`${host}:${port}` })
 
     // Single GET as handshake — confirms the embedded HTTP server is reachable
     // and Smart Tally is enabled. Timeout 4s.
@@ -1147,7 +1147,7 @@ function tricasterConnect(cfg) {
     const port = parseInt(cfg.tricasterPort) || 80
     const nIn  = Math.max(1, Math.min(parseInt(cfg.tricasterInputs) || 8, 16))
 
-    log(`Conectando a TriCaster en ${host}:${port} (${nIn} entradas)…`)
+    log(`Conectando a TriCaster en ${host}:${port} (${nIn} entradas)…`, 'info', 'logConnecting', { name:'TriCaster', target:`${host}:${port}` })
 
     // Handshake: HTTP GET /v1/version verifies server reachable + LivePanel
     // password disabled. 401/403 → password is set; user must disable it.
@@ -1420,7 +1420,7 @@ function avmatrixConnect(cfg) {
     const nIn  = Math.max(1, Math.min(parseInt(cfg.avmatrixInputs) || 4, 16))
     avmRxAt = 0
 
-    log(`Conectando a AVMatrix en ${host}:${port} (${nIn} entradas)…`)
+    log(`Conectando a AVMatrix en ${host}:${port} (${nIn} entradas)…`, 'info', 'logConnecting', { name:'AVMatrix', target:`${host}:${port}` })
 
     const sock = dgram.createSocket('udp4')
     avmSocket = sock
@@ -1485,7 +1485,7 @@ function avmatrixConnect(cfg) {
           avmatrixSend(host, port, avmatrixPack(0xFE, [0x01])) // sync request
           avmatrixSend(host, port, avmatrixPack(0xFF, [0x01])) // ping
           if (Date.now() - avmRxAt > AVMATRIX_RX_TIMEOUT_MS) {
-            log('AVMatrix: sin RX por 12s — desconectando', 'warn')
+            log('AVMatrix: sin RX por 12s — desconectando', 'warn', 'logNoAnswer', { name:'AVMatrix', secs:12 })
             avmatrixDisconnect()
             if (state.connected) {
               state.connected = false
@@ -1578,7 +1578,7 @@ function scheduleReconnect(delay = 4000) {
       else if (sw === 'avmatrix') await avmatrixConnect(state.config)
       else await obsConnect(state.config)
     } catch (e) {
-      log('Reconexión fallida: ' + e.message, 'warn')
+      log('Reconexión fallida: ' + e.message, 'warn', 'logReconnectFail', { error: e.message })
       scheduleReconnect(Math.min(delay * 2, 30000))
     }
   }, delay)
@@ -1591,8 +1591,14 @@ function sse(type, data) {
   }
 }
 
-function log(msg, type = 'info') {
+// The message travels as text AND, when it is one an operator reads and acts
+// on, as a key + params so the UI can render it in the chosen language and
+// re-render it when the language changes. Without the key the text is shown
+// as-is — right for diagnostics whose variable part comes from the OS and is
+// not translatable anyway.
+function log(msg, type = 'info', key = null, params = null) {
   const entry = { msg, type, ts: Date.now() }
+  if (key) { entry.key = key; if (params) entry.params = params }
   console.log(`[${type.toUpperCase()}] ${msg}`)
   sse('log', entry)
 }
@@ -1659,7 +1665,7 @@ function obsConnect(cfg) {
     state.error = null
     sse('status', statusPayload())
     const url = `ws://${cfg.obsHost}:${cfg.obsPort}`
-    log(`Conectando a OBS en ${url}…`)
+    log(`Conectando a OBS en ${url}…`, 'info', 'logConnecting', { name:'OBS', target:url })
     const ws = new WebSocket(url)
     obsSocket = ws
     let resolved = false
@@ -1686,7 +1692,7 @@ function obsConnect(cfg) {
       if (!resolved) failWith(new Error('Conexión cerrada inesperadamente'))
       else if (state.connected) {
         state.connected = false
-        log('OBS desconectado', 'warn')
+        log('OBS desconectado', 'warn', 'logDisconnected', { name:'OBS' })
         sse('status', statusPayload())
         if (!manualDisconnect) scheduleReconnect()
       }
@@ -1717,7 +1723,7 @@ function obsConnect(cfg) {
         state.connecting = false
         state.obsVersion = d.negotiatedRpcVersion
         state.deviceLabel = 'OBS WebSocket v' + d.negotiatedRpcVersion
-        log('Conectado a OBS ✓', 'success')
+        log('Conectado a OBS ✓', 'success', 'logConnected', { name:'OBS' })
         sse('status', statusPayload())
         try {
           const [sceneList, pgmRes, pvwRes] = await Promise.all([
@@ -1728,7 +1734,7 @@ function obsConnect(cfg) {
           state.scenes = [...(sceneList.scenes || [])].reverse()
           state.pgmScene = pgmRes.currentProgramSceneName || null
           state.pvwScene = pvwRes.currentPreviewSceneName || null
-          log(`${state.scenes.length} escenas detectadas`, 'success')
+          log(`${state.scenes.length} escenas detectadas`, 'success', 'logScenes', { n: state.scenes.length })
           sse('scenes', { scenes: state.scenes, mapping: state.mapping })
           sse('status', statusPayload())
           if (state.pgmScene) sendTally(state.pgmScene, 'program')
@@ -1779,7 +1785,7 @@ function handleEvent({ eventType, eventData }) {
   } else if (eventType === 'SceneListChanged') {
     obsCall('GetSceneList').then(data => {
       state.scenes = [...(data.scenes || [])].reverse()
-      log(`Lista de escenas actualizada (${state.scenes.length})`)
+      log(`Lista de escenas actualizada (${state.scenes.length})`, 'info', 'logScenesUpdated', { n: state.scenes.length })
       sse('scenes', { scenes: state.scenes, mapping: state.mapping })
     }).catch(() => {})
   }
@@ -1882,14 +1888,14 @@ async function _postTally(partialBody, label) {
   // same footgun the old test-tally panel was.
   if (probing) return
   const room = state.config.tallyRoom?.trim()
-  if (!room) { log('Sin sala configurada — tally ignorado', 'warn'); return }
+  if (!room) { log('Sin sala configurada — tally ignorado', 'warn', 'logNoRoom'); return }
   const body = { ...partialBody, room }
   const url  = `${state.config.tallyUrl.replace(/\/$/, '')}/api/tally`
   const headers = { 'Content-Type': 'application/json' }
   // Add auth header if server requires TALLY_SECRET — empty string means no auth
   if (state.config.tallyApiKey) {
     if (!_isByteStringSafe(state.config.tallyApiKey)) {
-      log('API Key inválida (contiene caracteres no válidos) — copiá la clave desde SWITCHER API KEY en el dashboard del evento, no otro texto', 'error')
+      log('API Key inválida (contiene caracteres no válidos) — copiá la clave desde SWITCHER API KEY en el dashboard del evento, no otro texto', 'error', 'logBadApiKey')
       sse('tally', { ...body, ok: false, error: 'invalid_api_key_chars' })
       return
     }
@@ -2021,7 +2027,7 @@ app.post('/api/disconnect', (req, res) => {
   avmatrixDisconnect()
   Object.assign(state, { connected: false, connecting: false, scenes: [], pgmScene: null, pvwScene: null, pgmScenes: [], pvwScenes: [] })
   sse('status', statusPayload())
-  log('Desconectado manualmente', 'warn')
+  log('Desconectado manualmente', 'warn', 'logManualDisconnect')
   res.json({ ok: true })
 })
 
@@ -2078,7 +2084,7 @@ app.post('/api/probe', async (req, res) => {
     roland: rolandConnect, tricaster: tricasterConnect, avmatrix: avmatrixConnect, obs: obsConnect
   }[sw]
 
-  log(`Probando ${sw} en ${host}…`)
+  log(`Probando ${sw} en ${host}…`, 'info', 'logProbing', { name:sw, target:host })
   try {
     await connectFn(state.config)
     // Give the switcher a moment to answer the queries the connect fired off,
@@ -2089,10 +2095,10 @@ app.post('/api/probe', async (req, res) => {
       device:  state.deviceLabel || null,
       sources: Array.isArray(state.scenes) ? state.scenes.length : 0
     })
-    log(`Prueba OK: ${sw} responde`, 'success')
+    log(`Prueba OK: ${sw} responde`, 'success', 'logProbeOk', { name:sw })
   } catch (e) {
     res.json({ ok: false, error: e.message })
-    log(`Prueba fallida: ${e.message}`, 'warn')
+    log(`Prueba fallida: ${e.message}`, 'warn', 'logProbeFail', { error:e.message })
   } finally {
     disconnectAll()
     Object.assign(state, {

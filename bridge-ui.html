@@ -291,6 +291,30 @@ var _i = {
   connectBtn:       { en: 'CONNECT',         es: 'CONECTAR' },
   connectingBtn:    { en: 'CONNECTING...',   es: 'CONECTANDO...' },
   lastSession:      { en: 'LAST SESSION',    es: 'ÚLTIMA SESIÓN' },
+  // Mensajes del registro. El servidor manda la clave y los datos; el texto se
+  // arma acá para que también cambie al tocar el selector de idioma.
+  logConnecting:      { en: 'Connecting to {name} at {target}…', es: 'Conectando a {name} en {target}…' },
+  logConnected:       { en: 'Connected to {name} ✓',   es: 'Conectado a {name} ✓' },
+  logDisconnected:    { en: '{name} disconnected',     es: '{name} desconectado' },
+  logManualDisconnect:{ en: 'Disconnected manually',   es: 'Desconectado manualmente' },
+  logNoRoom:          { en: 'No room configured — tally ignored', es: 'Sin sala configurada — tally ignorado' },
+  logNoAnswer:        { en: '{name}: no answer for {secs}s — reconnecting', es: '{name}: sin respuesta por {secs}s — reconectando' },
+  logBadApiKey:       { en: 'Invalid API Key (contains invalid characters) — copy it from SWITCHER API KEY in the event dashboard, not other text',
+                        es: 'API Key inválida (contiene caracteres no válidos) — copiá la clave desde SWITCHER API KEY en el dashboard del evento, no otro texto' },
+  logAutoMapped:      { en: 'Auto-mapped {n} sources → cameras', es: 'Auto-mapeadas {n} fuentes → cámaras' },
+  logProbing:         { en: 'Testing {name} at {target}…', es: 'Probando {name} en {target}…' },
+  logProbeOk:         { en: 'Test OK: {name} responds',  es: 'Prueba OK: {name} responde' },
+  logProbeFail:       { en: 'Test failed: {error}',      es: 'Prueba fallida: {error}' },
+  logInputMode:       { en: 'Osee: input assignment = {mode}', es: 'Osee: asignación de entradas = {mode}' },
+  // El rótulo del modo se traduce acá; el servidor solo manda el número.
+  oseeMode0:          { en: '4 physical ports',      es: '4 puertos físicos' },
+  oseeMode1:          { en: '8 physical ports (1)',  es: '8 puertos físicos (1)' },
+  oseeMode2:          { en: '8 physical ports (2)',  es: '8 puertos físicos (2)' },
+  oseeMode3:          { en: '8 physical ports (3)',  es: '8 puertos físicos (3)' },
+  logSources:         { en: 'Switcher exposes {n} sources: {list}', es: 'El switcher expone {n} fuentes: {list}' },
+  logScenes:          { en: '{n} scenes detected',      es: '{n} escenas detectadas' },
+  logScenesUpdated:   { en: 'Scene list updated ({n})', es: 'Lista de escenas actualizada ({n})' },
+  logReconnectFail:   { en: 'Reconnect failed: {error}', es: 'Reconexión fallida: {error}' },
   step1:            { en: 'Pick your switcher',  es: 'Elegí tu switcher' },
   step2:            { en: 'Connect the switcher', es: 'Conectá el switcher' },
   step3:            { en: 'Connect TallyComm',   es: 'Conectá TallyComm' },
@@ -328,7 +352,8 @@ var _i = {
   autoDetect:       { en: 'AUTO-DETECT',     es: 'AUTO-DETECTAR' },
   waitingSwitcher:  { en: 'Waiting for switcher data...', es: 'Esperando datos del switcher...' },
   assignCams:       { en: 'Assign cameras to test', es: 'Asigna c\u00e1maras para probar' },
-  manualTest:       { en: 'MANUAL TEST',     es: 'TEST MANUAL' },
+  // manualTest: (sin uso desde que se quitó el panel de prueba de tally)
+  _manualTest:       { en: 'MANUAL TEST',     es: 'TEST MANUAL' },
   activityLog:      { en: 'ACTIVITY LOG',    es: 'LOG DE ACTIVIDAD' },
   clear:            { en: 'CLEAR',           es: 'LIMPIAR' },
   initMsg:          { en: 'TallyBridge {v} started. Configure connection to begin.', es: 'TallyBridge {v} iniciado. Configura la conexi\u00f3n para comenzar.' },
@@ -464,17 +489,47 @@ function toggleLang() {
   else renderConnect(null)
 }
 
+// Copies whatever is typed into the form back into ui.saved*, so a re-render
+// does not throw it away. Same reason doConnect() syncs them: the form is
+// rebuilt from ui.saved*, and anything only living in the DOM is lost.
+function captureFormState() {
+  const v = id => { const el = document.getElementById(id); return el ? el.value : undefined }
+  const set = (k, id) => { const x = v(id); if (x !== undefined) ui[k] = x }
+  set('savedObsHost','obsHost');           set('savedObsPort','obsPort')
+  set('savedRgblinkHost','rgblinkHost');   set('savedRgblinkPort','rgblinkPort')
+  set('savedAtemHost','atemHost')
+  set('savedVmixHost','vmixHost');         set('savedVmixPort','vmixPort')
+  set('savedOseeHost','oseeHost')
+  set('savedRolandHost','rolandHost');     set('savedRolandPort','rolandPort');     set('savedRolandInputs','rolandInputs')
+  set('savedTricasterHost','tricasterHost'); set('savedTricasterPort','tricasterPort'); set('savedTricasterInputs','tricasterInputs')
+  set('savedAvmatrixHost','avmatrixHost'); set('savedAvmatrixInputs','avmatrixInputs')
+  set('savedRoom','tallyRoom');            set('savedApiKey','tallyApiKey');        set('savedUrl','tallyUrl')
+}
+
 function applyLang() {
-  document.getElementById('lang-en').className = _lang === 'en' ? 'active' : ''
-  document.getElementById('lang-es').className = _lang === 'es' ? 'active' : ''
-  document.getElementById('log-title').textContent = t('activityLog')
-  document.getElementById('log-clear-btn').textContent = t('clear')
-  document.getElementById('test-label').textContent = t('manualTest')
+  var el
+  if ((el = document.getElementById('lang-en'))) el.className = _lang === 'en' ? 'active' : ''
+  if ((el = document.getElementById('lang-es'))) el.className = _lang === 'es' ? 'active' : ''
+  if ((el = document.getElementById('log-title'))) el.textContent = t('activityLog')
+  if ((el = document.getElementById('log-clear-btn'))) el.textContent = t('clear')
   var init = document.getElementById('log-init-msg')
-  if (init) init.textContent = t('initMsg')
-  // Refresh status text
+  if (init) init.textContent = t('initMsg').replace('{v}', ui._version ? 'v' + ui._version : '')
   var st = document.getElementById('status-text')
   if (st) st.textContent = ui.connected ? t('connected') : ui.connecting ? t('connecting') : t('disconnected')
+  rerenderLog()
+
+  // The main area is built with t() at render time, so it only picks up a new
+  // language by being rebuilt. Without this the whole form stayed in the old
+  // one and the toggle looked broken — it appeared to change only the log.
+  captureFormState()
+  if (ui.connected) {
+    // renderConnected() builds its markup only once; drop it so the new
+    // language actually takes.
+    const old = document.getElementById('connected-content')
+    if (old) old.remove()
+    renderConnected()
+    renderSceneTable()
+  } else renderConnect(null)
 }
 
 // ── ESTADO UI ──────────────────────────────────────────────────
@@ -1231,18 +1286,45 @@ function autoDetect() {
 }
 
 // ── LOG ────────────────────────────────────────────────────────
-function addLog({ msg, type, ts }) {
+// Renders one entry. When the server supplied a key, the text is built here so
+// it follows the language selector; entries without one keep their own text.
+function logText(e) {
+  if (!e.key) return e.msg
+  const tpl = t(e.key)
+  if (!tpl || tpl === e.key) return e.msg          // clave desconocida → texto original
+  const p = Object.assign({}, e.params)
+  // El modo de entradas del Osee viaja como número para poder rotularlo aquí
+  if (e.key === 'logInputMode' && p.n !== undefined) p.mode = t('oseeMode' + p.n) || String(p.n)
+  return tpl.replace(/\{(\w+)\}/g, (m, k) => (p[k] !== undefined) ? p[k] : m)
+}
+
+// Kept so the log can be re-rendered when the language changes
+const logEntries = []
+
+function addLog(e) {
   const scroll = document.getElementById('log-scroll')
   if (!scroll) return
-  const dt   = new Date(ts)
+  logEntries.push(e)
+  while (logEntries.length > 200) logEntries.shift()
+  const dt   = new Date(e.ts)
   const time = dt.toTimeString().split(' ')[0]
-  const icon = type === 'success' ? '\u2713' : type === 'error' ? '\u2717' : type === 'warn' ? '!' : '\u00b7'
+  const icon = e.type === 'success' ? '\u2713' : e.type === 'error' ? '\u2717' : e.type === 'warn' ? '!' : '\u00b7'
   const entry = document.createElement('div')
-  entry.className = `log-entry ${type}`
-  entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-icon">${icon}</span><span class="log-msg">${esc(msg)}</span>`
+  entry.className = `log-entry ${e.type}`
+  entry.innerHTML = `<span class="log-ts">${time}</span><span class="log-icon">${icon}</span><span class="log-msg">${esc(logText(e))}</span>`
   scroll.appendChild(entry)
   while (scroll.children.length > 200) scroll.removeChild(scroll.firstChild)
   scroll.scrollTop = scroll.scrollHeight
+}
+
+// Re-draws every entry in the current language
+function rerenderLog() {
+  const scroll = document.getElementById('log-scroll')
+  if (!scroll) return
+  const keep = logEntries.slice()
+  scroll.innerHTML = ''
+  logEntries.length = 0
+  keep.forEach(addLog)
 }
 
 function clearLog() {
