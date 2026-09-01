@@ -628,11 +628,22 @@ const OSEE_INPUT_MODES = {
 const OSEE_MULTISOURCE = 5001
 let oseeMsWindows = {}     // window index → { source, enabled }
 let oseeMsCount   = 0      // window count reported by the switcher
-// Last source ID reported on each bus. Declared here, with the rest of the Osee
+// Last state reported on each bus. Declared here, with the rest of the Osee
 // state, rather than next to the function that reads them — a `let` used by a
 // handler but declared further down is a temporal-dead-zone crash waiting for
 // the day something calls it during module load.
+//
+// Two sources for the same thing, and the plural one is the right one:
+//   pgmIndex → a single source ID. What the official Companion module uses.
+//   pgmTally → an ARRAY of everything on air. Osee's documented tally API.
+// Verified against real hardware: mid-transition pgmTally reports both sides
+// (`IN2 + IN3`) while pgmIndex reports only one, and with a composite on air it
+// expands it by itself (`MultiSource + IN2 + IN1`). Using pgmIndex meant the
+// outgoing camera went dark the instant a transition started, still on air.
+// It can also repeat a value (`[3,3]`), so the expansion below dedups.
+// pgmIndex is kept as a fallback for firmware that does not answer pgmTally.
 let oseePgmSource = null, oseePvwSource = null
+let oseePgmTally  = null, oseePvwTally  = null
 
 function _oseeExpand(sourceId) {
   if (sourceId !== OSEE_MULTISOURCE) return oseeSources.includes(sourceId) ? [`src_${sourceId}`] : []
@@ -740,7 +751,7 @@ function oseeConnect(cfg) {
           }
           return
         }
-        oseeSend({ id: 'pgmIndex', type: 'get' })   // cheap, and re-syncs PGM
+        oseeSend({ id: 'pgmTally', type: 'get' })   // cheap, and re-syncs the whole PGM bus
       }, OSEE_KEEPALIVE_MS)
 
       // Ask what this switcher is and which sources it exposes, then for the
@@ -752,6 +763,10 @@ function oseeConnect(cfg) {
       // Window count comes back first; its handler then asks for each window's
       // source and enabled flag, so a composite can be expanded from the start.
       oseeSend({ id: 'multiSourceWindowCount', type: 'get' })
+      // pgmTally/pvwTally are the documented tally API and carry everything on
+      // air; pgmIndex/pvwIndex are asked too as a fallback for older firmware.
+      oseeSend({ id: 'pgmTally',   type: 'get' })
+      oseeSend({ id: 'pvwTally',   type: 'get' })
       oseeSend({ id: 'pgmIndex',   type: 'get' })
       oseeSend({ id: 'pvwIndex',   type: 'get' })
       resolve()
@@ -871,6 +886,14 @@ function _handleOseeMessage(msg) {
     return
   }
 
+  if (msg.id === 'pgmTally' || msg.id === 'pvwTally') {
+    const ids = (Array.isArray(msg.value) ? msg.value : [msg.value]).map(Number)
+    if (msg.id === 'pgmTally') oseePgmTally = ids
+    else                       oseePvwTally = ids
+    _oseeRefreshTally()
+    return
+  }
+
   if (msg.id !== 'pgmIndex' && msg.id !== 'pvwIndex') return
 
   const sourceId = Array.isArray(msg.value) ? Number(msg.value[0]) : Number(msg.value)
@@ -879,11 +902,25 @@ function _handleOseeMessage(msg) {
   _oseeRefreshTally()
 }
 
-// Resolve both buses from the last reported source IDs, expanding MultiSource
-// into the cameras it is actually showing. Unknown or undiscovered IDs resolve
-// to nothing, which clears that bus rather than guessing.
+// Resolve a bus to scene keys. Prefers the tally array (everything on air) and
+// falls back to the single index for firmware that does not answer pgmTally.
+// Each entry is expanded, so a composite resolves to its windows whether the
+// switcher already expanded it or not — running both is idempotent, and it
+// also removes the duplicates pgmTally can contain.
+function _oseeBusKeys(tally, single) {
+  const ids = Array.isArray(tally) ? tally : [single]
+  const out = []
+  for (const id of ids) {
+    for (const key of _oseeExpand(id)) if (!out.includes(key)) out.push(key)
+  }
+  return out
+}
+
 function _oseeRefreshTally() {
-  updateTallyStateMulti(_oseeExpand(oseePgmSource), _oseeExpand(oseePvwSource))
+  updateTallyStateMulti(
+    _oseeBusKeys(oseePgmTally, oseePgmSource),
+    _oseeBusKeys(oseePvwTally, oseePvwSource)
+  )
 }
 
 function oseeDisconnect() {
@@ -896,6 +933,7 @@ function oseeDisconnect() {
   oseeSources = []   // re-discovered on the next connect; a different switcher may be behind that IP
   oseeMsWindows = {}; oseeMsCount = 0
   oseePgmSource = null; oseePvwSource = null
+  oseePgmTally  = null; oseePvwTally  = null
   _lastMultiPgm = null; _lastMultiPvw = null   // force a resend after reconnecting
 }
 
