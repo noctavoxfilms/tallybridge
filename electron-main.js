@@ -1,8 +1,10 @@
 'use strict'
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog } = require('electron')
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, screen } = require('electron')
 const path   = require('path')
+const fs     = require('fs')
 const http   = require('http')
+const https  = require('https')
 
 // ── Prevent multiple instances ───────────────────────────────
 const gotLock = app.requestSingleInstanceLock()
@@ -11,6 +13,8 @@ if (!gotLock) { app.quit(); process.exit(0) }
 // ── Config ───────────────────────────────────────────────────
 const PORT     = 4000
 const APP_NAME = 'TallyBridge'
+const REPO     = 'noctavoxfilms/tallybridge'
+const WIN_STATE_FILE = path.join(app.getPath('userData'), 'window-state.json')
 
 let mainWindow = null
 let tray       = null
@@ -57,11 +61,106 @@ function makeTrayIcon() {
   }
 }
 
+// ── Update check ─────────────────────────────────────────────
+// Asks GitHub for the latest release and tells you if there is a newer one.
+// Deliberately NOT an auto-updater: this holds the tally for a live show, and
+// an app that restarts itself mid-broadcast to install something is a hazard.
+// It informs; you choose when.
+function cmpVersions(a, b) {
+  const pa = String(a).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0)
+  const pb = String(b).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0)
+  for (let i = 0; i < 3; i++) { if ((pa[i]||0) !== (pb[i]||0)) return (pa[i]||0) - (pb[i]||0) }
+  return 0
+}
+
+let updateChecked = false
+function checkForUpdates() {
+  if (updateChecked || !app.isPackaged) return   // no nagging while developing
+  updateChecked = true
+
+  const req = https.request({
+    host: 'api.github.com',
+    path: `/repos/${REPO}/releases/latest`,
+    headers: { 'User-Agent': APP_NAME, 'Accept': 'application/vnd.github+json' },
+    timeout: 6000
+  }, res => {
+    let body = ''
+    res.setEncoding('utf8')
+    res.on('data', d => body += d)
+    res.on('end', () => {
+      if (res.statusCode !== 200) return
+      let rel; try { rel = JSON.parse(body) } catch (e) { return }
+      const latest = rel && rel.tag_name
+      if (!latest || cmpVersions(latest, app.getVersion()) <= 0) return
+
+      // Never interrupt a live connection — the switcher is driving tally right
+      // now. Hold the notice until nothing is connected.
+      const notify = () => {
+        if (bridgeModule && bridgeModule.isConnected && bridgeModule.isConnected()) {
+          return setTimeout(notify, 60000)
+        }
+        dialog.showMessageBox(mainWindow, {
+          type: 'info',
+          title: APP_NAME,
+          message: `Hay una versión nueva: ${latest}`,
+          detail: `Tenés la v${app.getVersion()}. Podés seguir usando esta y actualizar cuando te quede cómodo.`,
+          buttons: ['Ver la actualización', 'Después'],
+          defaultId: 0, cancelId: 1
+        }).then(r => {
+          if (r.response === 0) shell.openExternal(rel.html_url || `https://github.com/${REPO}/releases/latest`)
+        }).catch(() => {})
+      }
+      notify()
+    })
+  })
+  // A missing or unreachable GitHub is not worth telling anyone about
+  req.on('error', () => {})
+  req.on('timeout', () => req.destroy())
+  req.end()
+}
+
+// ── Window size and position, remembered between launches ────
+// It used to reopen at a fixed 1060x760 every time, so any resizing was lost on
+// the next launch. The default is bigger now but still clamped to the screen's
+// work area, so it never opens larger than the desktop on a small laptop.
+function loadWindowState() {
+  const area = screen.getPrimaryDisplay().workAreaSize
+  const def  = { width: Math.min(1280, area.width - 40), height: Math.min(860, area.height - 40) }
+  let saved = null
+  try { saved = JSON.parse(fs.readFileSync(WIN_STATE_FILE, 'utf8')) } catch (e) {}
+  if (!saved || !saved.width || !saved.height) return def
+
+  const st = {
+    width:  Math.min(Math.max(saved.width, 800), area.width),
+    height: Math.min(Math.max(saved.height, 600), area.height)
+  }
+  // Only restore the position if it still lands on a connected display —
+  // otherwise unplugging a second monitor reopens the window off-screen.
+  if (Number.isInteger(saved.x) && Number.isInteger(saved.y)) {
+    const visible = screen.getAllDisplays().some(d => {
+      const b = d.bounds
+      return saved.x < b.x + b.width && saved.x + 200 > b.x &&
+             saved.y < b.y + b.height && saved.y + 100 > b.y
+    })
+    if (visible) { st.x = saved.x; st.y = saved.y }
+  }
+  return st
+}
+
+function saveWindowState() {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return
+  try {
+    const b = mainWindow.getNormalBounds ? mainWindow.getNormalBounds() : mainWindow.getBounds()
+    fs.mkdirSync(path.dirname(WIN_STATE_FILE), { recursive: true })
+    fs.writeFileSync(WIN_STATE_FILE, JSON.stringify(b))
+  } catch (e) {}
+}
+
 // ── Create main window ───────────────────────────────────────
 function createWindow() {
+  const st = loadWindowState()
   mainWindow = new BrowserWindow({
-    width:           1060,
-    height:          760,
+    ...st,
     minWidth:        800,
     minHeight:       600,
     title:           APP_NAME,
@@ -80,7 +179,15 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show()
+    checkForUpdates()
   })
+
+  // Debounced so dragging or resizing does not hammer the disk
+  let saveTimer = null
+  const queueSave = () => { clearTimeout(saveTimer); saveTimer = setTimeout(saveWindowState, 400) }
+  mainWindow.on('resize', queueSave)
+  mainWindow.on('move', queueSave)
+  mainWindow.on('close', saveWindowState)
 
   // Open external links in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

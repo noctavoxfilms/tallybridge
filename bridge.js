@@ -2102,4 +2102,6 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
   })
 }
 
-module.exports = { shutdownTally }
+// isConnected lets the Electron shell hold back the update notice while a
+// switcher is driving tally — no popups over a live show.
+module.exports = { shutdownTally, isConnected: () => !!state.connected }
