@@ -442,6 +442,8 @@ function applyLang() {
 const ui = {
   connected: false, connecting: false,
   pgmScene: null, pvwScene: null, pgmCam: 0, pvwCam: 0,
+  // El bus completo — un compuesto o una transición ponen varias al aire
+  pgmScenes: [], pvwScenes: [], pgmCams: [], pvwCams: [],
   scenes: [], mapping: {},
   // Nothing preselected: the operator picks the switcher deliberately. The
   // saved config no longer decides it either — it is offered as a one-click
@@ -465,6 +467,10 @@ function onStatus(d) {
   ui.pgmScene   = d.pgmScene
   ui.pvwScene   = d.pvwScene
   ui.pgmCam     = d.pgmCam || 0
+  ui.pgmScenes  = d.pgmScenes || []
+  ui.pvwScenes  = d.pvwScenes || []
+  ui.pgmCams    = d.pgmCams || []
+  ui.pvwCams    = d.pvwCams || []
   ui.pvwCam     = d.pvwCam || 0
 
   // The server sends this as `config` (statusPayload). It was read as
@@ -949,15 +955,22 @@ function updateTallyCards() {
   const pvwSc    = document.getElementById('pvw-scene')
   if (!pgmCard) return
 
-  pgmCard.className = 'tally-card' + (ui.pgmCam ? ' pgm-active' : '')
-  pvwCard.className = 'tally-card' + (ui.pvwCam ? ' pvw-active' : '')
-  pgmCamEl.textContent = ui.pgmCam ? 'CAM ' + ui.pgmCam : '\u2014'
-  pvwCamEl.textContent = ui.pvwCam ? 'CAM ' + ui.pvwCam : '\u2014'
+  // A bus can carry several cameras at once \u2014 a composite has every window on
+  // air, and a transition has both sides live while it runs. Showing only the
+  // first hid the rest, even though tally was being sent for all of them.
+  const pgmCams = ui.pgmCams.length ? ui.pgmCams : (ui.pgmCam ? [ui.pgmCam] : [])
+  const pvwCams = ui.pvwCams.length ? ui.pvwCams : (ui.pvwCam ? [ui.pvwCam] : [])
+  const pgmScenes = ui.pgmScenes.length ? ui.pgmScenes : (ui.pgmScene ? [ui.pgmScene] : [])
+  const pvwScenes = ui.pvwScenes.length ? ui.pvwScenes : (ui.pvwScene ? [ui.pvwScene] : [])
 
-  const pgmDisplay = ui.pgmScene ? (getDisplayName(ui.pgmScene)) : t('noSignal')
-  const pvwDisplay = ui.pvwScene ? (getDisplayName(ui.pvwScene)) : t('noSignal')
-  pgmSc.textContent = pgmDisplay
-  pvwSc.textContent = pvwDisplay
+  pgmCard.className = 'tally-card' + (pgmCams.length ? ' pgm-active' : '')
+  pvwCard.className = 'tally-card' + (pvwCams.length ? ' pvw-active' : '')
+  pgmCamEl.textContent = pgmCams.length ? 'CAM ' + pgmCams.join(' + ') : '\u2014'
+  pvwCamEl.textContent = pvwCams.length ? 'CAM ' + pvwCams.join(' + ') : '\u2014'
+
+  const names = keys => keys.map(getDisplayName).join('  +  ')
+  pgmSc.textContent = pgmScenes.length ? names(pgmScenes) : t('noSignal')
+  pvwSc.textContent = pvwScenes.length ? names(pvwScenes) : t('noSignal')
 }
 
 function getDisplayName(sceneName) {
@@ -976,8 +989,9 @@ function renderSceneTable() {
     const name    = s.sceneName
     const display = s.displayName || name
     const cam     = ui.mapping[name] || 0
-    const isPgm   = name === ui.pgmScene
-    const isPvw   = name === ui.pvwScene
+    // Membership, not equality — every source on air gets its badge
+    const isPgm   = ui.pgmScenes.length ? ui.pgmScenes.includes(name) : name === ui.pgmScene
+    const isPvw   = ui.pvwScenes.length ? ui.pvwScenes.includes(name) : name === ui.pvwScene
     const rowCls  = isPgm ? ' pgm-row' : isPvw ? ' pvw-row' : ''
     const badge   = isPgm ? '<span class="scene-badge badge-pgm">PGM</span>' : isPvw ? '<span class="scene-badge badge-pvw">PVW</span>' : ''
     const opts    = '<option value="0"' + (!cam ? ' selected' : '') + '>\u2014 ' + t('ignore') + '</option>' +

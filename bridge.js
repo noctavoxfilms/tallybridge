@@ -74,6 +74,8 @@ const state = {
   scenes: [],
   pgmScene: null,
   pvwScene: null,
+  pgmScenes: [],   // el bus completo — puede tener más de una (compuesto/transición)
+  pvwScenes: [],
   // Addresses that actually connected, newest first, per switcher — the UI
   // offers them as suggestions. Only successful ones are kept, otherwise a
   // typo would be suggested back to you forever.
@@ -290,6 +292,43 @@ function handleRGBlinkMessage(buf) {
 // ── ATEM (UDP port 9910 via atem-connection) ───────────────────
 let atemConnection = null
 
+// Everything genuinely on air on M/E 1, not just the bus.
+// The program bus is one input, but an upstream keyer that is on air also puts
+// its fill source on screen, and so does a downstream keyer — a lower-third
+// over camera 2, or a PiP, means that operator is being broadcast too. The
+// official ATEM Companion module exposes the same flags (`usk.onAir`,
+// `dsk.onAir`), which is where the field names come from.
+// During a transition the previous program input is still live; ATEM reports
+// that through `transitionPosition.inTransition`, so both sides are included.
+function _atemBuses(st) {
+  const pgm = [], pvw = []
+  const add = (arr, id) => {
+    const n = Number(id)
+    if (Number.isInteger(n) && n > 0 && !arr.includes(n)) arr.push(n)
+  }
+  const me = st?.video?.mixEffects?.[0]
+  if (!me) return { pgmKeys: [], pvwKeys: [] }
+
+  add(pgm, me.programInput)
+  add(pvw, me.previewInput)
+
+  // Mid-transition the outgoing input is still being emitted
+  if (me.transitionPosition?.inTransition) add(pgm, me.previewInput)
+
+  for (const usk of me.upstreamKeyers || []) {
+    if (usk?.onAir) add(pgm, usk.fillSource)
+  }
+  for (const dsk of Object.values(st?.video?.downstreamKeyers || {})) {
+    if (dsk?.onAir) add(pgm, dsk.sources?.fillSource)
+  }
+
+  // PGM always wins: a camera on air must never be shown as preview
+  return {
+    pgmKeys: pgm.sort((a, b) => a - b).map(n => `input_${n}`),
+    pvwKeys: pvw.filter(n => !pgm.includes(n)).sort((a, b) => a - b).map(n => `input_${n}`)
+  }
+}
+
 function atemConnect(cfg) {
   return new Promise((resolve, reject) => {
     state.connecting = true
@@ -366,12 +405,8 @@ function atemConnect(cfg) {
       // Read initial tally
       const me0 = atem.state.video.mixEffects[0]
       if (me0) {
-        state.pgmScene = `input_${me0.programInput}`
-        state.pvwScene = `input_${me0.previewInput}`
-        const pgmCam = state.mapping[state.pgmScene] || 0
-        const pvwCam = state.mapping[state.pvwScene] || 0
-        if (pgmCam) sendTallyDirect(pgmCam, 'program')
-        if (pvwCam && pvwCam !== pgmCam) sendTallyDirect(pvwCam, 'preview')
+        const t = _atemBuses(atem.state)
+        updateTallyStateMulti(t.pgmKeys, t.pvwKeys)
       }
 
       sse('scenes', { scenes: state.scenes, mapping: state.mapping })
@@ -389,14 +424,19 @@ function atemConnect(cfg) {
     })
 
     atem.on('stateChanged', (newState, paths) => {
-      const hasPgm = paths.includes('video.mixEffects.0.programInput')
-      const hasPvw = paths.includes('video.mixEffects.0.previewInput')
-      if (!hasPgm && !hasPvw) return
-      const me = newState.video.mixEffects[0]
-      if (!me) return
-      const pgmKey = `input_${me.programInput}`
-      const pvwKey = `input_${me.previewInput}`
-      updateTallyState(pgmKey, pvwKey)
+      // Keyer state matters as much as the bus: an upstream key that is on air
+      // puts its fill source on air too, and so does a downstream key. Watching
+      // only programInput left those camera operators without tally.
+      const touched = paths.some(p =>
+        p.includes('video.mixEffects.0.programInput') ||
+        p.includes('video.mixEffects.0.previewInput') ||
+        p.includes('video.mixEffects.0.upstreamKeyers') ||
+        p.includes('video.downstreamKeyers')
+      )
+      if (!touched) return
+      if (!newState.video.mixEffects[0]) return
+      const t = _atemBuses(newState)
+      updateTallyStateMulti(t.pgmKeys, t.pvwKeys)
     })
 
     atem.connect(host).catch((e) => {
@@ -528,16 +568,17 @@ function _processVmixBuffer() {
 }
 
 function _handleVmixTally(tallyStr) {
-  // Each char = 1 input: 0=off, 1=PGM, 2=PVW
-  // Take FIRST match (not last) — vMix can have multiple PGM with overlays (#10)
-  let newPgm = null, newPvw = null
+  // Each char = 1 input: 0=off, 1=PGM, 2=PVW.
+  // vMix marks EVERY input that is on air, so an input whose overlay layers hold
+  // other inputs shows several '1's at once — the official Companion module
+  // models programTally the same way, walking the overlay tree recursively.
+  // This used to keep only the first match, so everyone else in a PiP or overlay
+  // was being broadcast without tally.
+  const pgmKeys = [], pvwKeys = []
   for (let i = 0; i < tallyStr.length; i++) {
-    if (tallyStr[i] === '1' && !newPgm) newPgm = i + 1
-    if (tallyStr[i] === '2' && !newPvw) newPvw = i + 1
+    if (tallyStr[i] === '1') pgmKeys.push(`input_${i + 1}`)
+    if (tallyStr[i] === '2') pvwKeys.push(`input_${i + 1}`)
   }
-
-  const pgmKey = newPgm ? `input_${newPgm}` : null
-  const pvwKey = newPvw ? `input_${newPvw}` : null
 
   // Expand scene list if vMix has more inputs than expected
   const maxInput = tallyStr.length
@@ -549,7 +590,7 @@ function _handleVmixTally(tallyStr) {
     sse('scenes', { scenes: state.scenes, mapping: state.mapping })
   }
 
-  updateTallyState(pgmKey, pvwKey)
+  updateTallyStateMulti(pgmKeys, pvwKeys)
 }
 
 function vmixDisconnect() {
@@ -1034,14 +1075,17 @@ function rolandPollAll(host, port, nIn) {
   }
   Promise.all(polls).then((results) => {
     let okCount = 0
-    let newPgmKey = null
-    let newPvwKey = null
+    // Every input is polled separately and answers for itself, so more than one
+    // can report `onair` at the same time — a PinP or a split has several
+    // genuinely on air. Keeping only the first left the rest without tally.
+    // The official Roland module models it the same way: a status per input.
+    const pgmKeys = [], pvwKeys = []
     results.forEach((r) => {
       if (!r.ok) return
       okCount++
       const key = `input_${r.input}`
-      if (r.status === 'onair'    && !newPgmKey) newPgmKey = key
-      if (r.status === 'selected' && !newPvwKey) newPvwKey = key
+      if (r.status === 'onair')    pgmKeys.push(key)
+      if (r.status === 'selected') pvwKeys.push(key)
     })
 
     if (okCount === 0) {
@@ -1059,7 +1103,7 @@ function rolandPollAll(host, port, nIn) {
     }
 
     rolandFailCount = 0
-    updateTallyState(newPgmKey, newPvwKey)
+    updateTallyStateMulti(pgmKeys, pvwKeys)
   })
 }
 
@@ -1165,9 +1209,13 @@ function tricasterFetchVersion(host, port, timeoutMs) {
   })
 }
 
+// Ask for the dedicated tally dictionary first (one column per input with its
+// own on_pgm/on_prev, what the official Companion module uses) and fall back to
+// shortcut_states on anything unexpected, so older firmware keeps working.
+let tricasterTallyKey = 'tally'
 function tricasterRefreshTally(host, port) {
   http.request({
-    host, port, path: '/v1/dictionary?key=shortcut_states', method: 'GET',
+    host, port, path: '/v1/dictionary?key=' + tricasterTallyKey, method: 'GET',
     timeout: 2000
   }, (res) => {
     let body = ''
@@ -1175,39 +1223,81 @@ function tricasterRefreshTally(host, port) {
     res.on('data', (d) => body += d)
     res.on('end', () => {
       if (res.statusCode !== 200) {
+        if (tricasterTallyKey === 'tally') {
+          log('TriCaster: sin diccionario `tally` — usando shortcut_states', 'warn')
+          tricasterTallyKey = 'shortcut_states'
+          return
+        }
         if (++tricasterFailCount >= TRICASTER_FAIL_THRESHOLD) tricasterMarkDown('HTTP ' + res.statusCode)
         return
       }
       tricasterFailCount = 0
-      const r = parseTricasterTally(body)
-      const pgmKey = r.pgmInput ? `input_${r.pgmInput}` : null
-      const pvwKey = r.pvwInput ? `input_${r.pvwInput}` : null
-      updateTallyState(pgmKey, pvwKey)
+      let r = tricasterTallyKey === 'tally' ? parseTricasterTallyDict(body) : null
+      if (!r) {
+        if (tricasterTallyKey === 'tally') {
+          log('TriCaster: el diccionario `tally` no trae columnas — usando shortcut_states', 'warn')
+          tricasterTallyKey = 'shortcut_states'
+          return
+        }
+        r = parseTricasterTally(body)
+      }
+      updateTallyStateMulti(
+        r.pgmInputs.map(n => `input_${n}`),
+        r.pvwInputs.map(n => `input_${n}`)
+      )
     })
   }).on('error', (err) => {
     if (++tricasterFailCount >= TRICASTER_FAIL_THRESHOLD) tricasterMarkDown(err.message)
   }).end()
 }
 
+// program_tally / preview_tally are pipe-delimited LISTS — a PiP or a DSK puts
+// several inputs on air at once. Only the first token used to be read, so the
+// rest were broadcast without tally.
+// (TriCaster's M/E sub-source tally is not exposed via 5951/v1; that's a
+// documented Vizrt limitation, fine for cam-level tally use.)
 function parseTricasterTally(xml) {
-  // First INPUTn token owns the bus; skip BFR / DDR / VIRTUAL / M-E etc.
-  // (TriCaster's M/E sub-source tally is not exposed via 5951/v1; that's a
-  // documented Vizrt limitation, fine for cam-level tally use.)
-  function firstInputFrom(value) {
-    if (!value) return 0
-    const tokens = String(value).split('|')
-    for (let i = 0; i < tokens.length; i++) {
-      const m = tokens[i].match(/^INPUT(\d+)$/i)
-      if (m) return parseInt(m[1], 10)
+  function inputsFrom(value) {
+    const out = []
+    if (!value) return out
+    for (const token of String(value).split('|')) {
+      const m = token.match(/^INPUT(\d+)$/i)          // skip BFR / DDR / VIRTUAL / M-E
+      if (m) { const n = parseInt(m[1], 10); if (n && !out.includes(n)) out.push(n) }
     }
-    return 0
+    return out.sort((a, b) => a - b)
   }
   const pgmMatch = xml.match(/name="program_tally"\s+value="([^"]*)"/i)
   const pvwMatch = xml.match(/name="preview_tally"\s+value="([^"]*)"/i)
+  const pgmInputs = pgmMatch ? inputsFrom(pgmMatch[1]) : []
+  const pvwInputs = pvwMatch ? inputsFrom(pvwMatch[1]) : []
   return {
-    pgmInput: pgmMatch ? firstInputFrom(pgmMatch[1]) : 0,
-    pvwInput: pvwMatch ? firstInputFrom(pvwMatch[1]) : 0
+    pgmInputs, pvwInputs,
+    pgmInput: pgmInputs[0] || 0,   // kept for callers that only need one
+    pvwInput: pvwInputs[0] || 0
   }
+}
+
+// The official Companion module reads `dictionary?key=tally` instead, where the
+// switcher returns one column per input carrying its own on_pgm / on_prev flags
+// — the same shape of answer Osee gives through pgmTally. Preferred when it
+// answers, with the shortcut_states parsing above as the fallback.
+function parseTricasterTallyDict(xml) {
+  const pgmInputs = [], pvwInputs = []
+  // <column name="INPUT3" ... on_pgm="1" on_prev="0" />  (attribute order varies)
+  const re = /<column\b([^>]*)>/gi
+  let m
+  while ((m = re.exec(xml)) !== null) {
+    const attrs = m[1]
+    const name = (attrs.match(/name="([^"]*)"/i) || [])[1] || ''
+    const num  = (name.match(/^INPUT(\d+)$/i) || [])[1]
+    if (!num) continue
+    const n = parseInt(num, 10)
+    const on = k => { const v = (attrs.match(new RegExp(k + '="([^"]*)"', 'i')) || [])[1]; return v === '1' || v === 'true' }
+    if (on('on_pgm')  && !pgmInputs.includes(n)) pgmInputs.push(n)
+    if (on('on_prev') && !pvwInputs.includes(n)) pvwInputs.push(n)
+  }
+  if (!pgmInputs.length && !pvwInputs.length) return null   // not this shape — caller falls back
+  return { pgmInputs: pgmInputs.sort((a, b) => a - b), pvwInputs: pvwInputs.sort((a, b) => a - b) }
 }
 
 function tricasterMarkDown(reason) {
@@ -1252,6 +1342,7 @@ function tricasterDisconnect() {
   if (tricasterWs) { try { tricasterWs.terminate() } catch {}; tricasterWs = null }
   if (tricasterPollTimer) { clearInterval(tricasterPollTimer); tricasterPollTimer = null }
   tricasterFailCount = 0
+  tricasterTallyKey = 'tally'   // re-probe: the next connect may be a different unit
 }
 
 // ── AVMatrix (UDP push protocol on :19523/:19522) ──────────────
@@ -1520,7 +1611,21 @@ function rememberHost(switcher) {
   state.history[switcher] = next
 }
 
+// Scene keys on a bus, whichever path set them. The plural fields carry the
+// full set; the singular ones stay for the parts of the UI that only need one.
+function _busScenes(plural, single) {
+  if (Array.isArray(plural)) return plural
+  return single ? [single] : []
+}
+
 function statusPayload() {
+  const pgmScenes = _busScenes(state.pgmScenes, state.pgmScene)
+  const pvwScenes = _busScenes(state.pvwScenes, state.pvwScene)
+  const toCams = keys => {
+    const out = []
+    for (const k of keys) { const c = state.mapping[k] || 0; if (c && !out.includes(c)) out.push(c) }
+    return out.sort((a, b) => a - b)
+  }
   return {
     connected:  state.connected,
     connecting: state.connecting,
@@ -1530,6 +1635,12 @@ function statusPayload() {
     pvwScene:   state.pvwScene,
     pgmCam:     state.mapping[state.pgmScene] || 0,
     pvwCam:     state.mapping[state.pvwScene] || 0,
+    // A bus can carry more than one camera (composite, or a transition in
+    // flight). Without these the app showed only the first one, even though it
+    // was correctly sending tally for all of them.
+    pgmScenes,  pvwScenes,
+    pgmCams:    toCams(pgmScenes),
+    pvwCams:    toCams(pvwScenes),
     version:    VERSION,
     config:     state.config,
     history:    state.history
@@ -1691,6 +1802,9 @@ function updateTallyState(newPgmKey, newPvwKey) {
 
   state.pgmScene = newPgmKey
   state.pvwScene = newPvwKey
+  // Keep the plural form in sync so the UI reads one shape from both paths
+  state.pgmScenes = newPgmKey ? [newPgmKey] : []
+  state.pvwScenes = newPvwKey ? [newPvwKey] : []
 
   const pgmCam = newPgmKey ? (state.mapping[newPgmKey] || 0) : 0
   const pvwCam = newPvwKey ? (state.mapping[newPvwKey] || 0) : 0
@@ -1726,9 +1840,11 @@ function updateTallyStateMulti(pgmKeys, pvwKeys) {
   if (pgmKey === _lastMultiPgm && pvwKey === _lastMultiPvw) return   // dedup
   _lastMultiPgm = pgmKey; _lastMultiPvw = pvwKey
 
-  // Keep the single-key fields populated so the existing UI cards keep working
-  state.pgmScene = (pgmKeys && pgmKeys[0]) || null
-  state.pvwScene = (pvwKeys && pvwKeys[0]) || null
+  // Full sets for the UI, plus the single-key fields for the parts that read one
+  state.pgmScenes = (pgmKeys || []).slice()
+  state.pvwScenes = (pvwKeys || []).slice()
+  state.pgmScene = state.pgmScenes[0] || null
+  state.pvwScene = state.pvwScenes[0] || null
 
   sendTallyCameras(pgm, 'program')
   sendTallyCameras(pvw, 'preview')
@@ -1856,7 +1972,7 @@ app.post('/api/connect', async (req, res) => {
   tricasterDisconnect()
   avmatrixDisconnect()
 
-  Object.assign(state, { connected: false, connecting: false, error: null, scenes: [], pgmScene: null, pvwScene: null })
+  Object.assign(state, { connected: false, connecting: false, error: null, scenes: [], pgmScene: null, pvwScene: null, pgmScenes: [], pvwScenes: [] })
 
   try {
     if (switcher === 'atem')           await atemConnect(state.config)
@@ -1892,7 +2008,7 @@ app.post('/api/disconnect', (req, res) => {
   rolandDisconnect()
   tricasterDisconnect()
   avmatrixDisconnect()
-  Object.assign(state, { connected: false, connecting: false, scenes: [], pgmScene: null, pvwScene: null })
+  Object.assign(state, { connected: false, connecting: false, scenes: [], pgmScene: null, pvwScene: null, pgmScenes: [], pvwScenes: [] })
   sse('status', statusPayload())
   log('Desconectado manualmente', 'warn')
   res.json({ ok: true })
