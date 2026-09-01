@@ -1,5 +1,5 @@
 // ============================================================
-// TallyBridge v1.5.0 — conecta OBS, vMix, ATEM, RGBlink mini, Osee GoStream, Roland Smart Tally, NewTek/Vizrt TriCaster y AVMatrix a TallyComm
+// TallyBridge — conecta OBS, vMix, ATEM, RGBlink mini, Osee GoStream, Roland Smart Tally, NewTek/Vizrt TriCaster y AVMatrix a TallyComm
 // ============================================================
 'use strict'
 const express   = require('express')
@@ -15,6 +15,11 @@ const { Atem }  = require('atem-connection')
 
 const app  = express()
 const PORT = 4000
+// Single source of truth for the version. It used to be typed into the header,
+// the startup banner and a log string, so all three drifted behind package.json.
+const VERSION = (() => {
+  try { return require('./package.json').version } catch (e) { return '?' }
+})()
 // Highest camera number TallyComm accepts — mirrors CFG.CAM_MAX server-side.
 // Tally for anything above this is rejected, so don't auto-map that far.
 const TALLYCOMM_MAX_CAM = 8
@@ -43,6 +48,7 @@ function loadSaved() {
       const d = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'))
       if (d.config)  Object.assign(state.config, d.config)
       if (d.mapping) Object.assign(state.mapping, d.mapping)
+      if (d.history) Object.assign(state.history, d.history)
       console.log('[INFO] Config cargada desde disco')
     }
   } catch (e) { console.log('[WARN] No se pudo cargar config:', e.message) }
@@ -53,7 +59,8 @@ function saveToDisk() {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(SAVE_FILE, JSON.stringify({
       config: { ...state.config, obsPassword: '' },
-      mapping: state.mapping
+      mapping: state.mapping,
+      history: state.history
     }, null, 2))
   } catch (e) { console.log('[WARN] No se pudo guardar config:', e.message) }
 }
@@ -67,6 +74,10 @@ const state = {
   scenes: [],
   pgmScene: null,
   pvwScene: null,
+  // Addresses that actually connected, newest first, per switcher — the UI
+  // offers them as suggestions. Only successful ones are kept, otherwise a
+  // typo would be suggested back to you forever.
+  history: {},
   config: {
     switcher:      'obs',
     obsHost:       '127.0.0.1',
@@ -1452,6 +1463,25 @@ function log(msg, type = 'info') {
   sse('log', entry)
 }
 
+// Which config field holds the address for each switcher.
+const HOST_FIELD = {
+  obs: 'obsHost', vmix: 'vmixHost', atem: 'atemHost', rgblink: 'rgblinkHost',
+  osee: 'oseeHost', roland: 'rolandHost', tricaster: 'tricasterHost', avmatrix: 'avmatrixHost'
+}
+const HISTORY_MAX = 6
+
+// Record an address that connected. Kept per switcher so the OBS box never
+// suggests the Osee's IP, newest first, and capped so the list stays useful.
+function rememberHost(switcher) {
+  const field = HOST_FIELD[switcher]
+  if (!field) return
+  const host = String(state.config[field] || '').trim()
+  if (!host) return
+  const list = state.history[switcher] || []
+  const next = [host, ...list.filter(h => h !== host)].slice(0, HISTORY_MAX)
+  state.history[switcher] = next
+}
+
 function statusPayload() {
   return {
     connected:  state.connected,
@@ -1462,7 +1492,9 @@ function statusPayload() {
     pvwScene:   state.pvwScene,
     pgmCam:     state.mapping[state.pgmScene] || 0,
     pvwCam:     state.mapping[state.pvwScene] || 0,
-    config:     state.config
+    version:    VERSION,
+    config:     state.config,
+    history:    state.history
   }
 }
 
@@ -1797,6 +1829,7 @@ app.post('/api/connect', async (req, res) => {
     else if (switcher === 'tricaster') await tricasterConnect(state.config)
     else if (switcher === 'avmatrix')  await avmatrixConnect(state.config)
     else                               await obsConnect(state.config)
+    rememberHost(switcher)   // only reached when the connection actually succeeded
     saveToDisk()
     res.json({ ok: true })
   } catch (e) {
@@ -1878,7 +1911,7 @@ loadSaved()
 app.listen(LISTEN_PORT, '127.0.0.1', () => {
   if (!isElectron) {
     console.log('\n╔════════════════════════════════════╗')
-    console.log('║ TallyBridge v1.5.0 — TallyComm       ║')
+    console.log(`║ TallyBridge v${VERSION} — TallyComm`.padEnd(38) + '║')
     console.log(`║ http://localhost:${LISTEN_PORT}               ║`)
     console.log('╚════════════════════════════════════╝\n')
     const url = `http://localhost:${LISTEN_PORT}`
@@ -1886,23 +1919,12 @@ app.listen(LISTEN_PORT, '127.0.0.1', () => {
     try { execSync(cmd) } catch {}
   }
 
-  // Auto-connect to last used switcher if config was saved (#20)
+  // No auto-connect on launch. Opening the app used to silently dial the last
+  // switcher, which meant it could start driving tally on a room the operator
+  // had not chosen yet. The UI offers the previous session as a one-click card
+  // instead, so reconnecting stays fast but never happens on its own.
   const sw = state.config.switcher
-  const room = state.config.tallyRoom?.trim()
-  if (room && sw) {
-    log(`Auto-conectando a ${sw}…`)
-    const connectFn = sw === 'atem' ? atemConnect
-      : sw === 'vmix' ? vmixConnect
-      : sw === 'rgblink' ? rgblinkConnect
-      : sw === 'osee' ? oseeConnect
-      : sw === 'roland' ? rolandConnect
-      : sw === 'tricaster' ? tricasterConnect
-      : sw === 'avmatrix' ? avmatrixConnect
-      : obsConnect
-    connectFn(state.config).catch(e => {
-      log('Auto-conexión fallida: ' + e.message, 'warn')
-    })
-  }
+  if (sw && state.config.tallyRoom?.trim()) log(`Sesión anterior disponible: ${sw}`)
 })
 
 // ── Apagado: no dejar ninguna cámara encendida ────────────────

@@ -116,6 +116,14 @@ select.input option{background:#1a1a1a;}
 .connect-btn:hover{opacity:.88;}
 .connect-btn:active{opacity:.7;}
 .connect-btn:disabled{opacity:.35;cursor:not-allowed;}
+/* Last-session card — stands in for connecting automatically on launch */
+.last-session{display:flex;align-items:center;gap:12px;background:rgba(48,208,96,.07);border:1px solid rgba(48,208,96,.35);border-radius:var(--radius);padding:12px 14px;margin-bottom:14px;flex-wrap:wrap;}
+.ls-info{flex:1;min-width:150px;}
+.ls-lbl{font-family:var(--mono);font-size:9px;letter-spacing:.14em;color:var(--grn);margin-bottom:3px;}
+.ls-detail{font-family:var(--mono);font-size:12px;color:var(--txt);word-break:break-all;}
+.ls-btn{padding:9px 16px;background:var(--grn);border:none;border-radius:3px;color:#0a0a0a;font-family:var(--sans);font-size:13px;font-weight:700;letter-spacing:.06em;cursor:pointer;flex-shrink:0;}
+.ls-btn:hover{opacity:.88;}
+.pick-hint{font-family:var(--mono);font-size:12px;color:var(--txt2);text-align:center;padding:18px 12px;line-height:1.6;}
 .error-msg{background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);padding:10px 14px;font-family:var(--mono);font-size:10px;color:var(--red);line-height:1.6;margin-top:12px;}
 
 /* CONNECTED VIEW */
@@ -203,7 +211,7 @@ select.input option{background:#1a1a1a;}
     <div class="brand-dot" id="brand-dot"></div>
     <div>
       <div class="brand-name">TALLY<em>BRIDGE</em></div>
-      <div class="brand-ver">v1.5.0 — TallyComm</div>
+      <div class="brand-ver" id="brand-ver">— TallyComm</div>
     </div>
   </div>
   <div class="topbar-right">
@@ -228,7 +236,7 @@ select.input option{background:#1a1a1a;}
     <div class="log-scroll" id="log-scroll">
       <div class="log-entry info">
         <span class="log-ts">--:--:--</span>
-        <span class="log-msg" id="log-init-msg">TallyBridge v1.5.0 started. Configure connection to begin.</span>
+        <span class="log-msg" id="log-init-msg">TallyBridge started. Configure connection to begin.</span>
       </div>
     </div>
     <div class="test-panel" id="test-panel" style="display:none;">
@@ -256,6 +264,11 @@ var _i = {
   connectSub:       { en: 'TallyBridge runs locally on your computer and sends<br>tally in real time to TallyComm.', es: 'TallyBridge corre localmente en tu computadora y env\u00eda<br>el tally en tiempo real a TallyComm.' },
   connectBtn:       { en: 'CONNECT',         es: 'CONECTAR' },
   connectingBtn:    { en: 'CONNECTING...',   es: 'CONECTANDO...' },
+  lastSession:      { en: 'LAST SESSION',    es: 'ÚLTIMA SESIÓN' },
+  reconnectBtn:     { en: 'RECONNECT',       es: 'RECONECTAR' },
+  pickSwitcher:     { en: 'Pick a switcher above to configure it.',
+                      es: 'Elegí un switcher arriba para configurarlo.' },
+  pickSwitcherWarn: { en: 'Pick a switcher first', es: 'Primero elegí un switcher' },
   disconnect:       { en: 'DISCONNECT',      es: 'DESCONECTAR' },
   roomName:         { en: 'ROOM NAME',       es: 'NOMBRE DE SALA' },
   roomPlaceholder:  { en: 'e.g.: show-jan-2026', es: 'ej: show-enero-2026' },
@@ -279,7 +292,7 @@ var _i = {
   manualTest:       { en: 'MANUAL TEST',     es: 'TEST MANUAL' },
   activityLog:      { en: 'ACTIVITY LOG',    es: 'LOG DE ACTIVIDAD' },
   clear:            { en: 'CLEAR',           es: 'LIMPIAR' },
-  initMsg:          { en: 'TallyBridge v1.5.0 started. Configure connection to begin.', es: 'TallyBridge v1.5.0 iniciado. Configura la conexi\u00f3n para comenzar.' },
+  initMsg:          { en: 'TallyBridge {v} started. Configure connection to begin.', es: 'TallyBridge {v} iniciado. Configura la conexi\u00f3n para comenzar.' },
   enterRoom:        { en: 'You must enter a room name', es: 'Debes ingresar el nombre de sala' },
   enterApiKey:      { en: 'API Key is required. Get it from your event dashboard.', es: 'La API Key es obligatoria. Obtenela desde el dashboard del evento.' },
   selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
@@ -430,7 +443,13 @@ const ui = {
   connected: false, connecting: false,
   pgmScene: null, pvwScene: null, pgmCam: 0, pvwCam: 0,
   scenes: [], mapping: {},
-  selectedSwitcher: 'obs'
+  // Nothing preselected: the operator picks the switcher deliberately. The
+  // saved config no longer decides it either — it is offered as a one-click
+  // "last session" card instead, so restoring stays fast without happening
+  // behind your back.
+  selectedSwitcher: null,
+  lastSession: null,   // { switcher, host, room } from the saved config
+  history: {}          // switcher → addresses that connected before
 }
 
 // ── SSE ────────────────────────────────────────────────────────
@@ -448,29 +467,53 @@ function onStatus(d) {
   ui.pgmCam     = d.pgmCam || 0
   ui.pvwCam     = d.pvwCam || 0
 
-  if (d.savedConfig && !ui._configLoaded) {
+  // The server sends this as `config` (statusPayload). It was read as
+  // `savedConfig` here, a name bridge.js never used, so the whole block was
+  // dead: the form always showed hardcoded defaults while the server quietly
+  // held the real saved values.
+  if (d.config && !ui._configLoaded) {
     ui._configLoaded = true
-    if (d.savedConfig.obsHost)     ui.savedObsHost     = d.savedConfig.obsHost
-    if (d.savedConfig.obsPort)     ui.savedObsPort     = d.savedConfig.obsPort
-    if (d.savedConfig.rgblinkHost) ui.savedRgblinkHost = d.savedConfig.rgblinkHost
-    if (d.savedConfig.rgblinkPort) ui.savedRgblinkPort = d.savedConfig.rgblinkPort
-    if (d.savedConfig.atemHost)    ui.savedAtemHost    = d.savedConfig.atemHost
-    if (d.savedConfig.vmixHost)    ui.savedVmixHost    = d.savedConfig.vmixHost
-    if (d.savedConfig.vmixPort)    ui.savedVmixPort    = d.savedConfig.vmixPort
-    if (d.savedConfig.oseeHost)    ui.savedOseeHost    = d.savedConfig.oseeHost
-    if (d.savedConfig.rolandHost)  ui.savedRolandHost  = d.savedConfig.rolandHost
-    if (d.savedConfig.rolandPort)  ui.savedRolandPort  = d.savedConfig.rolandPort
-    if (d.savedConfig.rolandInputs) ui.savedRolandInputs = d.savedConfig.rolandInputs
-    if (d.savedConfig.tricasterHost)   ui.savedTricasterHost   = d.savedConfig.tricasterHost
-    if (d.savedConfig.tricasterPort)   ui.savedTricasterPort   = d.savedConfig.tricasterPort
-    if (d.savedConfig.tricasterInputs) ui.savedTricasterInputs = d.savedConfig.tricasterInputs
-    if (d.savedConfig.avmatrixHost)    ui.savedAvmatrixHost    = d.savedConfig.avmatrixHost
-    if (d.savedConfig.avmatrixInputs)  ui.savedAvmatrixInputs  = d.savedConfig.avmatrixInputs
-    if (d.savedConfig.tallyUrl)    ui.savedUrl         = d.savedConfig.tallyUrl
-    if (d.savedConfig.tallyRoom)   ui.savedRoom        = d.savedConfig.tallyRoom
-    if (d.savedConfig.tallyApiKey) ui.savedApiKey      = d.savedConfig.tallyApiKey
-    if (d.savedConfig.switcher)    ui.selectedSwitcher = d.savedConfig.switcher
-    window._lastConfig = d.savedConfig
+    if (d.config.obsHost)     ui.savedObsHost     = d.config.obsHost
+    if (d.config.obsPort)     ui.savedObsPort     = d.config.obsPort
+    if (d.config.rgblinkHost) ui.savedRgblinkHost = d.config.rgblinkHost
+    if (d.config.rgblinkPort) ui.savedRgblinkPort = d.config.rgblinkPort
+    if (d.config.atemHost)    ui.savedAtemHost    = d.config.atemHost
+    if (d.config.vmixHost)    ui.savedVmixHost    = d.config.vmixHost
+    if (d.config.vmixPort)    ui.savedVmixPort    = d.config.vmixPort
+    if (d.config.oseeHost)    ui.savedOseeHost    = d.config.oseeHost
+    if (d.config.rolandHost)  ui.savedRolandHost  = d.config.rolandHost
+    if (d.config.rolandPort)  ui.savedRolandPort  = d.config.rolandPort
+    if (d.config.rolandInputs) ui.savedRolandInputs = d.config.rolandInputs
+    if (d.config.tricasterHost)   ui.savedTricasterHost   = d.config.tricasterHost
+    if (d.config.tricasterPort)   ui.savedTricasterPort   = d.config.tricasterPort
+    if (d.config.tricasterInputs) ui.savedTricasterInputs = d.config.tricasterInputs
+    if (d.config.avmatrixHost)    ui.savedAvmatrixHost    = d.config.avmatrixHost
+    if (d.config.avmatrixInputs)  ui.savedAvmatrixInputs  = d.config.avmatrixInputs
+    if (d.config.tallyUrl)    ui.savedUrl         = d.config.tallyUrl
+    if (d.config.tallyRoom)   ui.savedRoom        = d.config.tallyRoom
+    if (d.config.tallyApiKey) ui.savedApiKey      = d.config.tallyApiKey
+    // Deliberately NOT setting ui.selectedSwitcher from the saved config —
+    // the switcher is offered through the "last session" card, not preselected.
+    if (d.config.switcher && d.config.tallyRoom) {
+      var _hf = { obs:'obsHost', vmix:'vmixHost', atem:'atemHost', rgblink:'rgblinkHost',
+                  osee:'oseeHost', roland:'rolandHost', tricaster:'tricasterHost', avmatrix:'avmatrixHost' };
+      ui.lastSession = {
+        switcher: d.config.switcher,
+        host:     d.config[_hf[d.config.switcher]] || '',
+        room:     d.config.tallyRoom
+      }
+    }
+    window._lastConfig = d.config
+  }
+  if (d.history) ui.history = d.history
+  // Version comes from package.json via the server — it used to be typed into
+  // the markup in three places and every one of them drifted behind a release.
+  if (d.version && ui._version !== d.version) {
+    ui._version = d.version
+    const bv = document.getElementById('brand-ver')
+    if (bv) bv.textContent = 'v' + d.version + ' — TallyComm'
+    const im = document.getElementById('log-init-msg')
+    if (im) im.textContent = t('initMsg').replace('{v}', 'v' + d.version)
   }
 
   const chip = document.getElementById('status-chip')
@@ -509,6 +552,8 @@ function renderConnect(error) {
         <div class="connect-title">${t('connectTitle')}</div>
         <p class="connect-sub">${t('connectSub')}</p>
       </div>
+
+      ${renderLastSession()}
 
       <div class="form-card cat-card">
         <div class="form-section-label">${t('catStreaming')}</div>
@@ -563,7 +608,8 @@ function renderConnect(error) {
       </div>
 
       <div class="form-card" id="switcher-fields">
-        ${sw==='rgblink'    ? renderRGBlinkFields()
+        ${!sw              ? '<div class="pick-hint">' + t('pickSwitcher') + '</div>'
+          : sw==='rgblink'    ? renderRGBlinkFields()
           : sw==='atem'     ? renderATEMFields()
           : sw==='vmix'     ? renderVMixFields()
           : sw==='osee'     ? renderOseeFields()
@@ -604,10 +650,50 @@ function renderConnect(error) {
       </div>
 
       ${error ? `<div class="error-msg">\u26a0 ${error}</div>` : ''}
-      <button class="connect-btn" id="connect-btn" onclick="doConnect()">${t('connectBtn')}</button>
+      <button class="connect-btn" id="connect-btn" onclick="doConnect()"${sw ? '' : ' disabled'}>${t('connectBtn')}</button>
     </div>`
 
   document.getElementById('test-panel').style.display = 'none'
+}
+
+// Offer the previous session as one click, in place of connecting on launch.
+// Shows what it would reconnect to, so it is never a blind action.
+function renderLastSession() {
+  const ls = ui.lastSession
+  if (!ls || ui.connected) return ''
+  const label = { obs:'OBS', vmix:'vMix', atem:'ATEM', rgblink:'RGBlink',
+                  osee:'Osee', roland:'Roland', tricaster:'TriCaster', avmatrix:'AVMatrix' }[ls.switcher] || ls.switcher
+  return `
+    <div class="last-session">
+      <div class="ls-info">
+        <div class="ls-lbl">${t('lastSession')}</div>
+        <div class="ls-detail">${escHtml(label)}${ls.host ? ' \u00b7 ' + escHtml(ls.host) : ''} \u00b7 ${escHtml(ls.room)}</div>
+      </div>
+      <button class="ls-btn" onclick="restoreLastSession()">${t('reconnectBtn')}</button>
+    </div>`
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+// Restore = select that switcher, then connect with the saved values already
+// in the fields. One click, but an explicit one.
+function restoreLastSession() {
+  if (!ui.lastSession) return
+  ui.selectedSwitcher = ui.lastSession.switcher
+  renderConnect()
+  doConnect()
+}
+
+// Addresses that connected before for this switcher, as a native datalist so
+// the input suggests them while typing.
+function hostDatalist(switcher, id) {
+  const list = (ui.history && ui.history[switcher]) || []
+  if (!list.length) return ''
+  return `<datalist id="${id}">` + list.map(h => `<option value="${escHtml(h)}"></option>`).join('') + `</datalist>`
 }
 
 function _steps(title, steps) {
@@ -631,7 +717,7 @@ function renderOBSFields() {
     <div class="field">
       <span class="field-label">${t('hostIp')}</span>
       <div class="field-row">
-        <input class="input" type="text"   id="obsHost" value="${ui.savedObsHost || '127.0.0.1'}" placeholder="127.0.0.1">
+        <input class="input" type="text"   id="obsHost" list="dl-obsHost" value="${ui.savedObsHost || '127.0.0.1'}" placeholder="127.0.0.1">
         <input class="input" type="number" id="obsPort" value="${ui.savedObsPort || 4455}" placeholder="4455" style="max-width:100px;">
       </div>
       <span class="field-hint">${t('obsHostHint')}</span>
@@ -639,7 +725,7 @@ function renderOBSFields() {
     <div class="field">
       <span class="field-label">${t('password')}</span>
       <input class="input" type="password" id="obsPassword" placeholder="${t('passwordHint')}">
-    </div>`
+    </div>${hostDatalist('obs','dl-obsHost')}`
 }
 
 function renderATEMFields() {
@@ -648,12 +734,12 @@ function renderATEMFields() {
     ${_steps(t('atemGuide'), [t('atemStep1'), t('atemStep2'), t('atemStep3'), t('atemStep4'), t('atemStep5')])}
     <div class="field">
       <span class="field-label">${t('atemIpLabel')}</span>
-      <input class="input" type="text" id="atemHost"
+      <input class="input" type="text" id="atemHost" list="dl-atemHost"
         value="${ui.savedAtemHost || '192.168.10.240'}"
         placeholder="192.168.10.240"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">${t('atemIpHint')}</span>
-    </div>`
+    </div>${hostDatalist('atem','dl-atemHost')}`
 }
 
 function renderVMixFields() {
@@ -663,7 +749,7 @@ function renderVMixFields() {
     <div class="field">
       <span class="field-label">${t('hostIp')}</span>
       <div class="field-row">
-        <input class="input" type="text" id="vmixHost"
+        <input class="input" type="text" id="vmixHost" list="dl-vmixHost"
           value="${ui.savedVmixHost || '127.0.0.1'}" placeholder="127.0.0.1"
           autocorrect="off" autocapitalize="off" spellcheck="false">
         <input class="input" type="number" id="vmixPort"
@@ -671,7 +757,7 @@ function renderVMixFields() {
           style="max-width:100px;">
       </div>
       <span class="field-hint">${t('vmixHostHint')}</span>
-    </div>`
+    </div>${hostDatalist('vmix','dl-vmixHost')}`
 }
 
 function renderRGBlinkFields() {
@@ -680,7 +766,7 @@ function renderRGBlinkFields() {
     ${_steps(t('rgbGuide'), [t('rgbStep1'), t('rgbStep2'), t('rgbStep3'), t('rgbStep4'), t('rgbStep5')])}
     <div class="field">
       <span class="field-label">${t('rgbIpLabel')}</span>
-      <input class="input" type="text" id="rgblinkHost"
+      <input class="input" type="text" id="rgblinkHost" list="dl-rgblinkHost"
         value="${ui.savedRgblinkHost || '192.168.0.99'}" placeholder="192.168.0.99"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">${t('rgbIpHint')}</span>
@@ -691,7 +777,7 @@ function renderRGBlinkFields() {
         value="${ui.savedRgblinkPort || 1000}" placeholder="1000"
         style="max-width:120px;">
       <span class="field-hint">${t('rgbPortHint')}</span>
-    </div>`
+    </div>${hostDatalist('rgblink','dl-rgblinkHost')}`
 }
 
 function renderOseeFields() {
@@ -700,11 +786,11 @@ function renderOseeFields() {
     ${_steps(t('oseeGuide'), [t('oseeStep1'), t('oseeStep2'), t('oseeStep3'), t('oseeStep4'), t('oseeStep5')])}
     <div class="field">
       <span class="field-label">${t('oseeIpLabel')}</span>
-      <input class="input" type="text" id="oseeHost"
+      <input class="input" type="text" id="oseeHost" list="dl-oseeHost"
         value="${ui.savedOseeHost || '192.168.1.100'}" placeholder="192.168.1.100"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">${t('oseeIpHint')}</span>
-    </div>`
+    </div>${hostDatalist('osee','dl-oseeHost')}`
 }
 
 function renderAvmatrixFields() {
@@ -717,7 +803,7 @@ function renderAvmatrixFields() {
     ${_steps(t('avmatrixGuide'), [t('avmatrixStep1'), t('avmatrixStep2'), t('avmatrixStep3'), t('avmatrixStep4'), t('avmatrixStep5')])}
     <div class="field">
       <span class="field-label">${t('avmatrixIpLabel')}</span>
-      <input class="input" type="text" id="avmatrixHost"
+      <input class="input" type="text" id="avmatrixHost" list="dl-avmatrixHost"
         value="${ui.savedAvmatrixHost || '192.168.1.110'}" placeholder="192.168.1.110"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">${t('avmatrixIpHint')}</span>
@@ -726,7 +812,7 @@ function renderAvmatrixFields() {
       <span class="field-label">${t('avmatrixInputsLabel')}</span>
       <select class="input" id="avmatrixInputs" style="max-width:140px;">${inputOpts}</select>
       <span class="field-hint">${t('avmatrixInputsHint')}</span>
-    </div>`
+    </div>${hostDatalist('avmatrix','dl-avmatrixHost')}`
 }
 
 function renderTricasterFields() {
@@ -739,7 +825,7 @@ function renderTricasterFields() {
     ${_steps(t('tricasterGuide'), [t('tricasterStep1'), t('tricasterStep2'), t('tricasterStep3'), t('tricasterStep4'), t('tricasterStep5'), t('tricasterStep6')])}
     <div class="field">
       <span class="field-label">${t('tricasterIpLabel')}</span>
-      <input class="input" type="text" id="tricasterHost"
+      <input class="input" type="text" id="tricasterHost" list="dl-tricasterHost"
         value="${ui.savedTricasterHost || '192.168.1.10'}" placeholder="192.168.1.10"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">${t('tricasterIpHint')}</span>
@@ -755,7 +841,7 @@ function renderTricasterFields() {
       <span class="field-label">${t('tricasterInputsLabel')}</span>
       <select class="input" id="tricasterInputs" style="max-width:140px;">${inputOpts}</select>
       <span class="field-hint">${t('tricasterInputsHint')}</span>
-    </div>`
+    </div>${hostDatalist('tricaster','dl-tricasterHost')}`
 }
 
 function renderRolandFields() {
@@ -768,7 +854,7 @@ function renderRolandFields() {
     ${_steps(t('rolandGuide'), [t('rolandStep1'), t('rolandStep2'), t('rolandStep3'), t('rolandStep4'), t('rolandStep5')])}
     <div class="field">
       <span class="field-label">${t('rolandIpLabel')}</span>
-      <input class="input" type="text" id="rolandHost"
+      <input class="input" type="text" id="rolandHost" list="dl-rolandHost"
         value="${ui.savedRolandHost || '192.168.0.1'}" placeholder="192.168.0.1"
         autocorrect="off" autocapitalize="off" spellcheck="false">
       <span class="field-hint">${t('rolandIpHint')}</span>
@@ -784,7 +870,7 @@ function renderRolandFields() {
       <span class="field-label">${t('rolandInputsLabel')}</span>
       <select class="input" id="rolandInputs" style="max-width:140px;">${inputOpts}</select>
       <span class="field-hint">${t('rolandInputsHint')}</span>
-    </div>`
+    </div>${hostDatalist('roland','dl-rolandHost')}`
 }
 
 function selectSwitcher(sw) {
@@ -938,10 +1024,14 @@ function flashCard(type) {
 
 // ── ACCIONES ───────────────────────────────────────────────────
 async function doConnect() {
+  const sw = ui.selectedSwitcher
+  if (!sw) {
+    addLog({ msg: t('pickSwitcherWarn'), type: 'warn', ts: Date.now() })
+    return
+  }
   const btn = document.getElementById('connect-btn')
   if (btn) { btn.disabled = true; btn.textContent = t('connectingBtn') }
 
-  const sw  = ui.selectedSwitcher
   const cfg = {
     switcher:    sw,
     obsHost:     document.getElementById('obsHost')?.value.trim()     || '127.0.0.1',
