@@ -74,6 +74,7 @@ const state = {
   scenes: [],
   pgmScene: null,
   pvwScene: null,
+  deviceLabel: null,  // lo que el equipo dice ser, para el resultado de la prueba
   pgmScenes: [],   // el bus completo — puede tener más de una (compuesto/transición)
   pvwScenes: [],
   // Addresses that actually connected, newest first, per switcher — the UI
@@ -113,6 +114,9 @@ const reqCbs         = {}
 const sseClients     = []
 let reconnectTimer   = null
 let manualDisconnect = false
+// True while /api/probe holds a throwaway connection. Suppresses tally output
+// (see _postTally) so testing a switcher never lights anyone's camera.
+let probing          = false
 
 // ── RGBlink UDP ────────────────────────────────────────────────
 // Protocolo basado en companion-module-rgblink-mini (Bitfocus)
@@ -873,7 +877,8 @@ function _handleOseeMessage(msg) {
   if (msg.type !== 'res' && msg.type !== 'pus' && msg.type !== 'get') return
 
   if (msg.id === 'deviceName') {
-    log(`Osee: ${String(Array.isArray(msg.value) ? msg.value[0] : msg.value)}`)
+    state.deviceLabel = String(Array.isArray(msg.value) ? msg.value[0] : msg.value)
+    log(`Osee: ${state.deviceLabel}`)
     return
   }
 
@@ -1711,6 +1716,7 @@ function obsConnect(cfg) {
         state.connected = true
         state.connecting = false
         state.obsVersion = d.negotiatedRpcVersion
+        state.deviceLabel = 'OBS WebSocket v' + d.negotiatedRpcVersion
         log('Conectado a OBS ✓', 'success')
         sse('status', statusPayload())
         try {
@@ -1870,6 +1876,11 @@ function _isByteStringSafe(s) {
 // Shared by both tally shapes so the API-key validation and error reporting
 // live in exactly one place.
 async function _postTally(partialBody, label) {
+  // A probe opens a real connection to learn what the switcher is, and that
+  // connection immediately reports its buses. Nothing may reach TallyComm from
+  // it — lighting an operator's phone during a "test connection" would be the
+  // same footgun the old test-tally panel was.
+  if (probing) return
   const room = state.config.tallyRoom?.trim()
   if (!room) { log('Sin sala configurada — tally ignorado', 'warn'); return }
   const body = { ...partialBody, room }
@@ -2024,10 +2035,76 @@ app.post('/api/mapping', (req, res) => {
   res.json({ ok: true, mapping: state.mapping })
 })
 
-app.post('/api/test', async (req, res) => {
-  const { camera, bus } = req.body
-  await sendTallyDirect(parseInt(camera), bus)
-  res.json({ ok: true })
+const SWITCHERS = ['obs','vmix','atem','tricaster','roland','osee','rgblink','avmatrix']
+const sanitizeSwitcher = s => SWITCHERS.includes(String(s)) ? String(s) : null
+
+// Tear down every transport. The same eight calls appeared in three places;
+// a probe needs them too, and a switcher missing from one copy would leak a
+// live socket.
+function disconnectAll() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+  if (obsSocket) { try { obsSocket.terminate() } catch {}; obsSocket = null }
+  rgblinkDisconnect(); atemDisconnect(); vmixDisconnect(); oseeDisconnect()
+  rolandDisconnect(); tricasterDisconnect(); avmatrixDisconnect()
+}
+
+// Try the switcher and report back what answered, without committing to it.
+// Replaces the old /api/test tally panel: that one only existed once already
+// connected — the exact moment a fake tally is dangerous — while what anyone
+// actually needs is to check the address BEFORE going live.
+app.post('/api/probe', async (req, res) => {
+  if (state.connected) return res.json({ ok: false, error: 'Ya hay una conexión activa' })
+  if (probing)         return res.json({ ok: false, error: 'Prueba en curso' })
+
+  const sw   = sanitizeSwitcher(req.body.switcher)
+  const host = String(req.body.host || '').trim()
+  if (!sw)   return res.json({ ok: false, error: 'Switcher inválido' })
+  if (!host) return res.json({ ok: false, error: 'Falta la dirección IP' })
+
+  const field = HOST_FIELD[sw]
+  const prevHost = state.config[field]
+  const prevSwitcher = state.config.switcher
+  state.config[field] = host
+  state.config.switcher = sw
+  if (req.body.port) {
+    const pf = { obs:'obsPort', vmix:'vmixPort', rgblink:'rgblinkPort', roland:'rolandPort', tricaster:'tricasterPort' }[sw]
+    if (pf) state.config[pf] = parseInt(req.body.port) || state.config[pf]
+  }
+
+  probing = true
+  manualDisconnect = true          // keep scheduleReconnect out of a throwaway connection
+  const connectFn = {
+    atem: atemConnect, vmix: vmixConnect, rgblink: rgblinkConnect, osee: oseeConnect,
+    roland: rolandConnect, tricaster: tricasterConnect, avmatrix: avmatrixConnect, obs: obsConnect
+  }[sw]
+
+  log(`Probando ${sw} en ${host}…`)
+  try {
+    await connectFn(state.config)
+    // Give the switcher a moment to answer the queries the connect fired off,
+    // so the reply can say what it is and how many sources it exposes.
+    await new Promise(r => setTimeout(r, 900))
+    res.json({
+      ok: true,
+      device:  state.deviceLabel || null,
+      sources: Array.isArray(state.scenes) ? state.scenes.length : 0
+    })
+    log(`Prueba OK: ${sw} responde`, 'success')
+  } catch (e) {
+    res.json({ ok: false, error: e.message })
+    log(`Prueba fallida: ${e.message}`, 'warn')
+  } finally {
+    disconnectAll()
+    Object.assign(state, {
+      connected: false, connecting: false, error: null, scenes: [],
+      pgmScene: null, pvwScene: null, pgmScenes: [], pvwScenes: [], deviceLabel: null
+    })
+    state.config[field] = prevHost
+    state.config.switcher = prevSwitcher
+    probing = false
+    manualDisconnect = false
+    sse('status', statusPayload())
+  }
 })
 
 app.get('/api/status', (req, res) => res.json({

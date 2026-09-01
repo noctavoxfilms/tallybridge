@@ -49,7 +49,33 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .sidebar{width:300px;flex-shrink:0;border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;}
 
 /* CONNECT FORM */
-.connect-wrap{max-width:560px;margin:40px auto;padding:0 20px;}
+.connect-wrap{max-width:1040px;margin:22px auto;padding:0 22px 40px;}
+/* Pasos: el título es grande y el color dice en cuál estás. Antes no había
+   noción de secuencia; sin nada preseleccionado ahora hace falta. */
+.step{display:flex;align-items:center;gap:11px;margin:0 0 12px;}
+.step .n{width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  font-family:var(--sans);font-size:15px;font-weight:900;background:var(--s2);color:var(--txt4);border:1px solid var(--b1);}
+.step .ttl{font-size:19px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--txt4);}
+.step .bar{flex:1;height:1px;background:var(--b1);}
+.step.done .n{background:var(--grn);color:#0a0a0a;border-color:var(--grn);}
+.step.done .ttl{color:var(--txt2);}
+.step.now .n{background:var(--red);color:#fff;border-color:var(--red);box-shadow:0 0 0 4px rgba(255,59,59,.15);}
+.step.now .ttl{color:#fff;}
+.step.now .bar{background:linear-gradient(90deg,rgba(255,59,59,.5),var(--b1));}
+.blk{transition:opacity .2s;}
+.blk.locked{opacity:.32;pointer-events:none;}
+.cols2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:18px;align-items:start;}
+.form-card.ok{border-color:rgba(45,212,100,.45);}
+.form-card.now{border-color:rgba(255,59,59,.5);}
+.probe-row{display:flex;gap:8px;}
+.probe-row .input{flex:1;}
+.probe-btn{padding:9px 15px;background:var(--s3);border:1px solid var(--b2);border-radius:3px;color:var(--txt);
+  font-family:var(--sans);font-size:14px;font-weight:700;letter-spacing:.08em;white-space:nowrap;cursor:pointer;}
+.probe-btn:disabled{opacity:.5;cursor:default;}
+.probe-msg{display:flex;gap:8px;border-radius:3px;padding:9px 11px;margin-top:10px;font-family:var(--mono);font-size:10px;line-height:1.65;}
+.probe-msg.ok{background:rgba(45,212,100,.09);border:1px solid rgba(45,212,100,.3);color:var(--grn);}
+.probe-msg.err{background:var(--red-bg);border:1px solid rgba(255,59,59,.4);color:var(--red);}
+.go-hint{text-align:center;font-family:var(--mono);font-size:10px;color:var(--txt3);margin-top:8px;}
 .connect-header{margin-bottom:28px;}
 .connect-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--red);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .connect-eyebrow::before{content:'';width:20px;height:1px;background:var(--red);}
@@ -70,9 +96,10 @@ select.input{-webkit-appearance:none;appearance:none;cursor:pointer;background-i
 select.input option{background:#1a1a1a;}
 
 /* SWITCHER SELECTOR */
-.switch-row{display:flex;gap:8px;flex-wrap:wrap;}
+.switch-row{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+@media(max-width:900px){.switch-row{grid-template-columns:repeat(2,1fr);}}
 .switch-row.cols-3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
-.switch-opt{flex:1;min-width:90px;padding:14px 10px 12px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);cursor:pointer;text-align:center;transition:all .12s;color:var(--txt3);}
+.switch-opt{padding:13px 8px 10px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);cursor:pointer;text-align:center;transition:all .12s;color:var(--txt3);}
 .switch-opt:hover{color:var(--txt2);border-color:var(--b3);}
 .switch-opt.active{background:var(--blu-bg);border-color:var(--blu);color:var(--blu);}
 .switch-opt-icon{display:flex;align-items:center;justify-content:center;height:32px;margin-bottom:8px;}
@@ -82,6 +109,9 @@ select.input option{background:#1a1a1a;}
   /* Slight desaturation when inactive to harmonize with the dim selector state. */
   filter:brightness(.92);transition:filter .12s;}
 .switch-opt{overflow:hidden;}
+.sw-tag{position:absolute;top:0;left:0;font-family:var(--mono);font-size:7px;letter-spacing:.1em;padding:2px 5px;background:var(--b1);color:var(--txt3);border-bottom-right-radius:3px;}
+.switch-opt{position:relative;}
+.pick-hint{font-family:var(--mono);font-size:12px;color:var(--txt2);text-align:center;padding:18px 12px;line-height:1.6;}
 .switch-opt:hover .switch-opt-icon img,
 .switch-opt.active .switch-opt-icon img{filter:none;}
 .switch-opt-name{font-family:var(--sans);font-size:14px;font-weight:700;color:var(--txt2);letter-spacing:.02em;}
@@ -128,6 +158,14 @@ select.input option{background:#1a1a1a;}
 
 /* CONNECTED VIEW */
 .connected-wrap{padding:20px;}
+/* Durante el show el cromo cede el protagonismo al tally, pero sin caer por
+   debajo del umbral de lectura: la jerarquía la dan el tamaño y el color de las
+   tarjetas, no volver ilegible al resto (ver la regla de contraste en §16). */
+.map-two{display:grid;grid-template-columns:1fr 1fr;gap:0 26px;}
+@media(max-width:900px){.map-two{grid-template-columns:1fr;}}
+.conn-sub{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--txt3);}
+.conn-sub b{color:var(--grn);font-weight:400;}
+.conn-room{font-family:var(--mono);font-size:13px;color:var(--txt2);margin-top:4px;}
 .tally-monitor{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
 .tally-card{background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);padding:14px 16px;transition:all .2s;}
 .tally-card.pgm-active{border-color:var(--red);background:var(--red-bg);}
@@ -135,7 +173,7 @@ select.input option{background:#1a1a1a;}
 .tally-card-bus{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--txt4);margin-bottom:6px;}
 .tally-card.pgm-active .tally-card-bus{color:var(--red);}
 .tally-card.pvw-active .tally-card-bus{color:var(--ylw);}
-.tally-card-cam{font-family:var(--sans);font-size:36px;font-weight:900;color:var(--txt3);line-height:1;}
+.tally-card-cam{font-family:var(--sans);font-size:44px;font-weight:900;color:var(--txt3);line-height:1;}
 .tally-card.pgm-active .tally-card-cam{color:var(--red);text-shadow:0 0 20px rgba(255,59,59,.4);}
 .tally-card.pvw-active .tally-card-cam{color:var(--ylw);text-shadow:0 0 20px rgba(255,196,0,.3);}
 .tally-card-scene{font-family:var(--mono);font-size:10px;color:var(--txt3);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -149,12 +187,12 @@ select.input option{background:#1a1a1a;}
 
 /* SCENE TABLE */
 .scene-table{width:100%;border-collapse:collapse;}
-.scene-table th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--txt4);padding:6px 10px;text-align:left;border-bottom:1px solid var(--b1);font-weight:normal;}
+.scene-table th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--txt3);padding:6px 10px;text-align:left;border-bottom:1px solid var(--b1);font-weight:normal;}
 .scene-table td{padding:4px 6px;border-bottom:1px solid rgba(255,255,255,.04);}
 .scene-row:last-child td{border-bottom:none;}
 .scene-row.pgm-row td{background:rgba(255,59,59,.06);}
 .scene-row.pvw-row td{background:rgba(255,196,0,.04);}
-.scene-name-cell{font-family:var(--mono);font-size:11px;color:var(--txt2);padding:8px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.scene-name-cell{font-family:var(--mono);font-size:12px;color:var(--txt2);padding:8px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .scene-badge{display:inline-block;font-size:9px;letter-spacing:.06em;padding:1px 5px;border-radius:1px;margin-left:6px;vertical-align:middle;}
 .badge-pgm{background:var(--red);color:#fff;}
 .badge-pvw{background:var(--ylw);color:#111;}
@@ -182,14 +220,6 @@ select.input option{background:#1a1a1a;}
 .log-msg{line-height:1.4;word-break:break-all;}
 
 /* TEST PANEL */
-.test-panel{border-top:1px solid var(--b1);padding:12px 14px;flex-shrink:0;}
-.test-label{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--txt4);margin-bottom:8px;}
-.test-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.test-btn{padding:7px;background:var(--s2);border:1px solid var(--b1);border-radius:2px;color:var(--txt3);font-family:var(--mono);font-size:10px;cursor:pointer;transition:all .1s;text-align:center;letter-spacing:.06em;}
-.test-btn:hover{border-color:var(--b3);color:var(--txt2);}
-.test-btn.pgm:hover{border-color:var(--red);color:var(--red);}
-.test-btn.pvw:hover{border-color:var(--ylw);color:var(--ylw);}
-.test-btn.clr:hover{border-color:var(--blu);color:var(--blu);}
 
 /* SCROLLBAR */
 ::-webkit-scrollbar{width:4px;height:4px;}
@@ -239,10 +269,6 @@ select.input option{background:#1a1a1a;}
         <span class="log-msg" id="log-init-msg">TallyBridge started. Configure connection to begin.</span>
       </div>
     </div>
-    <div class="test-panel" id="test-panel" style="display:none;">
-      <div class="test-label" id="test-label">MANUAL TEST</div>
-      <div class="test-grid" id="test-grid"></div>
-    </div>
   </div>
 </div>
 
@@ -265,6 +291,19 @@ var _i = {
   connectBtn:       { en: 'CONNECT',         es: 'CONECTAR' },
   connectingBtn:    { en: 'CONNECTING...',   es: 'CONECTANDO...' },
   lastSession:      { en: 'LAST SESSION',    es: 'ÚLTIMA SESIÓN' },
+  step1:            { en: 'Pick your switcher',  es: 'Elegí tu switcher' },
+  step2:            { en: 'Connect the switcher', es: 'Conectá el switcher' },
+  step3:            { en: 'Connect TallyComm',   es: 'Conectá TallyComm' },
+  probeBtn:         { en: 'TEST',               es: 'PROBAR' },
+  probing:          { en: 'TESTING…',           es: 'PROBANDO…' },
+  probeOkSources:   { en: 'responds · {n} sources', es: 'responde · {n} fuentes' },
+  probeOkNext:      { en: 'Now fill in the TallyComm details →', es: 'Ahora completá los datos de TallyComm →' },
+  probeFail:        { en: 'No answer:',          es: 'No responde:' },
+  pickFirst:        { en: 'Pick a switcher above to configure it.', es: 'Elegí un switcher arriba para configurarlo.' },
+  needSwitcher:     { en: 'Pick a switcher to begin', es: 'Elegí un switcher para empezar' },
+  needProbe:        { en: 'Test the connection with the switcher', es: 'Probá la conexión con el switcher' },
+  needTallycomm:    { en: 'Room and API key are still missing', es: 'Falta completar la sala y la API key' },
+  sourcesDetected:  { en: 'detected',            es: 'detectadas' },
   reconnectBtn:     { en: 'RECONNECT',       es: 'RECONECTAR' },
   pickSwitcher:     { en: 'Pick a switcher above to configure it.',
                       es: 'Elegí un switcher arriba para configurarlo.' },
@@ -451,6 +490,8 @@ const ui = {
   // behind your back.
   selectedSwitcher: null,
   lastSession: null,   // { switcher, host, room } from the saved config
+  probe: null,         // resultado de la última prueba de conexión
+  probeOk: false,
   history: {}          // switcher → addresses that connected before
 }
 
@@ -547,123 +588,179 @@ function onTally(d) {
 }
 
 // ── RENDER: CONNECT FORM ───────────────────────────────────────
+// Guided setup: pick a switcher, prove it answers, then wire TallyComm.
+// Each step unlocks the next and CONNECT stays disabled — with the reason
+// spelled out — until all three are done, so nothing fails silently.
+const SWITCHER_LIST = [
+  ['obs','OBS','WebSocket v5','SOFTWARE'], ['vmix','vMix','TCP API','SOFTWARE'],
+  ['atem','ATEM','Mini / SDI / TV Studio',''], ['tricaster','TriCaster','TC1 / TC2 Elite / Mini',''],
+  ['roland','Roland','V-60HD / V-160HD / VR',''], ['osee','Osee','GoStream Deck / Duet',''],
+  ['rgblink','RGBlink','mini / mini-pro',''], ['avmatrix','AVMatrix','HVS / PVS / VS / MVS','']
+]
+
+// 1 = choose, 2 = test the switcher, 3 = TallyComm, 4 = ready
+function connectStage() {
+  if (!ui.selectedSwitcher) return 1
+  if (!ui.probeOk) return 2
+  const room = (document.getElementById('tallyRoom') || {}).value
+  const key  = (document.getElementById('tallyApiKey') || {}).value
+  return (room && room.trim() && key && key.trim()) ? 4 : 3
+}
+
+function stepHtml(n, title, state) {
+  return `<div class="step ${state}"><span class="n">${state === 'done' ? '✓' : n}</span>` +
+         `<span class="ttl">${title}</span><span class="bar"></span></div>`
+}
+
 function renderConnect(error) {
   const sw = ui.selectedSwitcher
   const ma = document.getElementById('main-area')
+  const stage = connectStage()
+  const s1 = stage >= 2 ? 'done' : 'now'
+  const s2 = stage < 2 ? '' : stage >= 3 ? 'done' : 'now'
+  const s3 = stage < 3 ? '' : stage >= 4 ? 'done' : 'now'
+
+  const fields = !sw ? `<div class="pick-hint">${t('pickSwitcher')}</div>`
+    : sw === 'rgblink'   ? renderRGBlinkFields()
+    : sw === 'atem'      ? renderATEMFields()
+    : sw === 'vmix'      ? renderVMixFields()
+    : sw === 'osee'      ? renderOseeFields()
+    : sw === 'roland'    ? renderRolandFields()
+    : sw === 'tricaster' ? renderTricasterFields()
+    : sw === 'avmatrix'  ? renderAvmatrixFields()
+    : renderOBSFields()
 
   ma.innerHTML = `
     <div class="connect-wrap">
-      <div class="connect-header">
-        <div class="connect-eyebrow">${t('config')}</div>
-        <div class="connect-title">${t('connectTitle')}</div>
-        <p class="connect-sub">${t('connectSub')}</p>
-      </div>
-
       ${renderLastSession()}
 
-      <div class="form-card cat-card">
-        <div class="form-section-label">${t('catStreaming')}</div>
-        <div class="switch-row">
-          <div class="switch-opt ${sw==='obs' ? 'active' : ''}" onclick="selectSwitcher('obs')">
-            <span class="switch-opt-icon">${brandIcon('obs')}</span>
-            <div class="switch-opt-name">OBS</div>
-            <div class="switch-opt-badge">${sw==='obs' ? t('selected') : 'WebSocket v5'}</div>
+      ${stepHtml(1, t('step1'), s1)}
+      <div class="switch-row">
+        ${SWITCHER_LIST.map(([k, n, sub, tag]) => `
+          <div class="switch-opt ${sw === k ? 'active' : ''}" onclick="selectSwitcher('${k}')">
+            ${tag ? `<span class="sw-tag">${tag}</span>` : ''}
+            <span class="switch-opt-icon">${brandIcon(k)}</span>
+            <div class="switch-opt-name">${n}</div>
+            <div class="switch-opt-badge">${sw === k ? t('selected') : sub}</div>
+          </div>`).join('')}
+      </div>
+
+      <div class="cols2">
+        <div>
+          ${stepHtml(2, t('step2'), s2)}
+          <div class="blk ${stage < 2 ? 'locked' : ''}">
+            <div class="form-card ${stage >= 3 ? 'ok' : stage === 2 ? 'now' : ''}" id="switcher-fields">
+              ${fields}
+              <div id="probe-result">${renderProbeResult()}</div>
+            </div>
           </div>
-          <div class="switch-opt ${sw==='vmix' ? 'active' : ''}" onclick="selectSwitcher('vmix')">
-            <span class="switch-opt-icon">${brandIcon('vmix')}</span>
-            <div class="switch-opt-name">vMix</div>
-            <div class="switch-opt-badge">${sw==='vmix' ? t('selected') : 'TCP API'}</div>
+        </div>
+        <div>
+          ${stepHtml(3, t('step3'), s3)}
+          <div class="blk ${stage < 3 ? 'locked' : ''}">
+            <div class="form-card ${stage >= 4 ? 'ok' : stage === 3 ? 'now' : ''}">
+              <div class="form-section-label">TALLYCOMM</div>
+              <div class="field">
+                <span class="field-label">${t('roomName')}</span>
+                <input class="input" type="text" id="tallyRoom" oninput="refreshConnectState()"
+                  value="${escHtml(ui.savedRoom || '')}" placeholder="${t('roomPlaceholder')}"
+                  autocorrect="off" autocapitalize="off" spellcheck="false">
+                <span class="field-hint">${t('roomHint')}</span>
+              </div>
+              <div class="field">
+                <span class="field-label">${t('apiKey')}</span>
+                <input class="input" type="password" id="tallyApiKey" oninput="refreshConnectState()"
+                  value="${escHtml(ui.savedApiKey || '')}" placeholder="${t('apiKeyPlaceholder')}"
+                  autocorrect="off" autocapitalize="off" spellcheck="false">
+                <span class="field-hint">${t('apiKeyHint')}</span>
+              </div>
+              <details class="advanced-section">
+                <summary>▸ ${t('advancedSettings')}</summary>
+                <div class="field" style="margin-top:8px">
+                  <span class="field-label">${t('serverUrl')}</span>
+                  <input class="input" type="text" id="tallyUrl"
+                    value="${escHtml(ui.savedUrl || 'https://tallycomm.com')}" placeholder="https://tallycomm.com">
+                  <span class="field-hint">${t('serverUrlHint')}</span>
+                </div>
+              </details>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="form-card cat-card">
-        <div class="form-section-label">${t('catSwitcher')}</div>
-        <div class="switch-row cols-3">
-          <div class="switch-opt ${sw==='atem' ? 'active' : ''}" onclick="selectSwitcher('atem')">
-            <span class="switch-opt-icon">${brandIcon('atem')}</span>
-            <div class="switch-opt-name">ATEM</div>
-            <div class="switch-opt-badge">${sw==='atem' ? t('selected') : 'Mini / SDI / TV Studio'}</div>
-          </div>
-          <div class="switch-opt ${sw==='tricaster' ? 'active' : ''}" onclick="selectSwitcher('tricaster')">
-            <span class="switch-opt-icon">${brandIcon('tricaster')}</span>
-            <div class="switch-opt-name">TriCaster</div>
-            <div class="switch-opt-badge">${sw==='tricaster' ? t('selected') : 'TC1 / TC2 Elite / Mini'}</div>
-          </div>
-          <div class="switch-opt ${sw==='roland' ? 'active' : ''}" onclick="selectSwitcher('roland')">
-            <span class="switch-opt-icon">${brandIcon('roland')}</span>
-            <div class="switch-opt-name">Roland</div>
-            <div class="switch-opt-badge">${sw==='roland' ? t('selected') : 'V-60HD / V-160HD / VR'}</div>
-          </div>
-          <div class="switch-opt ${sw==='osee' ? 'active' : ''}" onclick="selectSwitcher('osee')">
-            <span class="switch-opt-icon">${brandIcon('osee')}</span>
-            <div class="switch-opt-name">Osee</div>
-            <div class="switch-opt-badge">${sw==='osee' ? t('selected') : 'GoStream Deck / Duet'}</div>
-          </div>
-          <div class="switch-opt ${sw==='rgblink' ? 'active' : ''}" onclick="selectSwitcher('rgblink')">
-            <span class="switch-opt-icon">${brandIcon('rgblink')}</span>
-            <div class="switch-opt-name">RGBlink</div>
-            <div class="switch-opt-badge">${sw==='rgblink' ? t('selected') : 'mini / mini-pro'}</div>
-          </div>
-          <div class="switch-opt ${sw==='avmatrix' ? 'active' : ''}" onclick="selectSwitcher('avmatrix')">
-            <span class="switch-opt-icon">${brandIcon('avmatrix')}</span>
-            <div class="switch-opt-name">AVMatrix</div>
-            <div class="switch-opt-badge">${sw==='avmatrix' ? t('selected') : 'HVS / PVS / VS / MVS'}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-card" id="switcher-fields">
-        ${!sw              ? '<div class="pick-hint">' + t('pickSwitcher') + '</div>'
-          : sw==='rgblink'    ? renderRGBlinkFields()
-          : sw==='atem'     ? renderATEMFields()
-          : sw==='vmix'     ? renderVMixFields()
-          : sw==='osee'     ? renderOseeFields()
-          : sw==='roland'   ? renderRolandFields()
-          : sw==='tricaster'? renderTricasterFields()
-          : sw==='avmatrix' ? renderAvmatrixFields()
-          : renderOBSFields()}
-      </div>
-
-      <div class="form-card">
-        <div class="form-section-label">TALLYCOMM</div>
-        <div class="field">
-          <span class="field-label">${t('roomName')}</span>
-          <input class="input" type="text" id="tallyRoom"
-            value="${ui.savedRoom || ''}"
-            placeholder="${t('roomPlaceholder')}"
-            autocorrect="off" autocapitalize="off" spellcheck="false">
-          <span class="field-hint">${t('roomHint')}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">${t('apiKey')}</span>
-          <input class="input" type="password" id="tallyApiKey"
-            value="${ui.savedApiKey || ''}"
-            placeholder="${t('apiKeyPlaceholder')}"
-            autocorrect="off" autocapitalize="off" spellcheck="false">
-          <span class="field-hint">${t('apiKeyHint')}</span>
-        </div>
-        <details class="advanced-section">
-          <summary>▸ ${t('advancedSettings')}</summary>
-          <div class="field" style="margin-top:8px">
-            <span class="field-label">${t('serverUrl')}</span>
-            <input class="input" type="text" id="tallyUrl"
-              value="${ui.savedUrl || 'https://tallycomm.com'}"
-              placeholder="https://tallycomm.com">
-            <span class="field-hint">${t('serverUrlHint')}</span>
-          </div>
-        </details>
-      </div>
-
-      ${error ? `<div class="error-msg">\u26a0 ${error}</div>` : ''}
-      <button class="connect-btn" id="connect-btn" onclick="doConnect()"${sw ? '' : ' disabled'}>${t('connectBtn')}</button>
+      ${error ? `<div class="error-msg">⚠ ${escHtml(error)}</div>` : ''}
+      <button class="connect-btn" id="connect-btn" onclick="doConnect()"${stage >= 4 ? '' : ' disabled'}>${t('connectBtn')}</button>
+      <div class="go-hint" id="go-hint">${stage >= 4 ? '' :
+        stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')}</div>
     </div>`
-
-  document.getElementById('test-panel').style.display = 'none'
 }
 
-// Offer the previous session as one click, in place of connecting on launch.
-// Shows what it would reconnect to, so it is never a blind action.
+// Only the pieces that depend on what has been filled in — re-rendering the
+// whole form on every keystroke would drop focus mid-typing.
+function refreshConnectState() {
+  const stage = connectStage()
+  const btn = document.getElementById('connect-btn')
+  if (btn) btn.disabled = stage < 4
+  const hint = document.getElementById('go-hint')
+  if (hint) hint.textContent = stage >= 4 ? '' :
+    stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')
+  const steps = document.querySelectorAll('.connect-wrap .step')
+  const st = ['', stage >= 2 ? 'done' : 'now',
+                  stage < 2 ? '' : stage >= 3 ? 'done' : 'now',
+                  stage < 3 ? '' : stage >= 4 ? 'done' : 'now']
+  steps.forEach((el, i) => {
+    el.className = 'step ' + (st[i + 1] || '')
+    const n = el.querySelector('.n')
+    if (n) n.textContent = st[i + 1] === 'done' ? '✓' : String(i + 1)
+  })
+  const blks = document.querySelectorAll('.connect-wrap .blk')
+  if (blks[0]) blks[0].className = 'blk ' + (stage < 2 ? 'locked' : '')
+  if (blks[1]) blks[1].className = 'blk ' + (stage < 3 ? 'locked' : '')
+  const cards = document.querySelectorAll('.connect-wrap .cols2 .form-card')
+  if (cards[0]) cards[0].className = 'form-card ' + (stage >= 3 ? 'ok' : stage === 2 ? 'now' : '')
+  if (cards[1]) cards[1].className = 'form-card ' + (stage >= 4 ? 'ok' : stage === 3 ? 'now' : '')
+}
+
+function renderProbeResult() {
+  const p = ui.probe
+  if (!p) return ''
+  if (p.ok) {
+    const src = p.sources ? ' ' + t('probeOkSources').replace('{n}', p.sources) : ''
+    return `<div class="probe-msg ok"><span>✓</span><div>${escHtml(p.device || '')}${src}<br>
+      <span style="color:var(--txt2)">${t('probeOkNext')}</span></div></div>`
+  }
+  return `<div class="probe-msg err"><span>✗</span><div>${t('probeFail')} ${escHtml(p.error || '')}</div></div>`
+}
+
+// Opens a real connection so the answer can say what the device is, then drops
+// it. The server suppresses tally output while probing, so this never lights
+// an operator's camera.
+async function doProbe(btn) {
+  const sw = ui.selectedSwitcher
+  if (!sw) return
+  const hostEl = document.getElementById({
+    obs:'obsHost', vmix:'vmixHost', atem:'atemHost', rgblink:'rgblinkHost',
+    osee:'oseeHost', roland:'rolandHost', tricaster:'tricasterHost', avmatrix:'avmatrixHost' }[sw])
+  const portEl = document.getElementById({
+    obs:'obsPort', vmix:'vmixPort', rgblink:'rgblinkPort', roland:'rolandPort', tricaster:'tricasterPort' }[sw] || '')
+  const host = hostEl ? hostEl.value.trim() : ''
+  if (!host) return
+
+  const orig = btn ? btn.textContent : ''
+  if (btn) { btn.disabled = true; btn.textContent = t('probing') }
+  const r = await fetch('/api/probe', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ switcher: sw, host, port: portEl ? portEl.value : undefined })
+  }).then(x => x.json()).catch(e => ({ ok: false, error: e.message }))
+
+  ui.probe = r
+  ui.probeOk = !!r.ok
+  if (btn) { btn.disabled = false; btn.textContent = orig || t('probeBtn') }
+  const box = document.getElementById('probe-result')
+  if (box) box.innerHTML = renderProbeResult()
+  refreshConnectState()
+}
+
 function renderLastSession() {
   const ls = ui.lastSession
   if (!ls || ui.connected) return ''
@@ -723,7 +820,7 @@ function renderOBSFields() {
     <div class="field">
       <span class="field-label">${t('hostIp')}</span>
       <div class="field-row">
-        <input class="input" type="text"   id="obsHost" list="dl-obsHost" value="${ui.savedObsHost || '127.0.0.1'}" placeholder="127.0.0.1">
+        <div class="probe-row"><input class="input" type="text"   id="obsHost" list="dl-obsHost" value="${ui.savedObsHost || '127.0.0.1'}" placeholder="127.0.0.1"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
         <input class="input" type="number" id="obsPort" value="${ui.savedObsPort || 4455}" placeholder="4455" style="max-width:100px;">
       </div>
       <span class="field-hint">${t('obsHostHint')}</span>
@@ -740,10 +837,10 @@ function renderATEMFields() {
     ${_steps(t('atemGuide'), [t('atemStep1'), t('atemStep2'), t('atemStep3'), t('atemStep4'), t('atemStep5')])}
     <div class="field">
       <span class="field-label">${t('atemIpLabel')}</span>
-      <input class="input" type="text" id="atemHost" list="dl-atemHost"
+      <div class="probe-row"><input class="input" type="text" id="atemHost" list="dl-atemHost"
         value="${ui.savedAtemHost || '192.168.10.240'}"
         placeholder="192.168.10.240"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
+        autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
       <span class="field-hint">${t('atemIpHint')}</span>
     </div>${hostDatalist('atem','dl-atemHost')}`
 }
@@ -755,9 +852,9 @@ function renderVMixFields() {
     <div class="field">
       <span class="field-label">${t('hostIp')}</span>
       <div class="field-row">
-        <input class="input" type="text" id="vmixHost" list="dl-vmixHost"
+        <div class="probe-row"><input class="input" type="text" id="vmixHost" list="dl-vmixHost"
           value="${ui.savedVmixHost || '127.0.0.1'}" placeholder="127.0.0.1"
-          autocorrect="off" autocapitalize="off" spellcheck="false">
+          autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
         <input class="input" type="number" id="vmixPort"
           value="${ui.savedVmixPort || 8099}" placeholder="8099"
           style="max-width:100px;">
@@ -772,9 +869,9 @@ function renderRGBlinkFields() {
     ${_steps(t('rgbGuide'), [t('rgbStep1'), t('rgbStep2'), t('rgbStep3'), t('rgbStep4'), t('rgbStep5')])}
     <div class="field">
       <span class="field-label">${t('rgbIpLabel')}</span>
-      <input class="input" type="text" id="rgblinkHost" list="dl-rgblinkHost"
+      <div class="probe-row"><input class="input" type="text" id="rgblinkHost" list="dl-rgblinkHost"
         value="${ui.savedRgblinkHost || '192.168.0.99'}" placeholder="192.168.0.99"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
+        autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
       <span class="field-hint">${t('rgbIpHint')}</span>
     </div>
     <div class="field">
@@ -792,9 +889,9 @@ function renderOseeFields() {
     ${_steps(t('oseeGuide'), [t('oseeStep1'), t('oseeStep2'), t('oseeStep3'), t('oseeStep4'), t('oseeStep5')])}
     <div class="field">
       <span class="field-label">${t('oseeIpLabel')}</span>
-      <input class="input" type="text" id="oseeHost" list="dl-oseeHost"
+      <div class="probe-row"><input class="input" type="text" id="oseeHost" list="dl-oseeHost"
         value="${ui.savedOseeHost || '192.168.1.100'}" placeholder="192.168.1.100"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
+        autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
       <span class="field-hint">${t('oseeIpHint')}</span>
     </div>${hostDatalist('osee','dl-oseeHost')}`
 }
@@ -809,9 +906,9 @@ function renderAvmatrixFields() {
     ${_steps(t('avmatrixGuide'), [t('avmatrixStep1'), t('avmatrixStep2'), t('avmatrixStep3'), t('avmatrixStep4'), t('avmatrixStep5')])}
     <div class="field">
       <span class="field-label">${t('avmatrixIpLabel')}</span>
-      <input class="input" type="text" id="avmatrixHost" list="dl-avmatrixHost"
+      <div class="probe-row"><input class="input" type="text" id="avmatrixHost" list="dl-avmatrixHost"
         value="${ui.savedAvmatrixHost || '192.168.1.110'}" placeholder="192.168.1.110"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
+        autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
       <span class="field-hint">${t('avmatrixIpHint')}</span>
     </div>
     <div class="field">
@@ -831,9 +928,9 @@ function renderTricasterFields() {
     ${_steps(t('tricasterGuide'), [t('tricasterStep1'), t('tricasterStep2'), t('tricasterStep3'), t('tricasterStep4'), t('tricasterStep5'), t('tricasterStep6')])}
     <div class="field">
       <span class="field-label">${t('tricasterIpLabel')}</span>
-      <input class="input" type="text" id="tricasterHost" list="dl-tricasterHost"
+      <div class="probe-row"><input class="input" type="text" id="tricasterHost" list="dl-tricasterHost"
         value="${ui.savedTricasterHost || '192.168.1.10'}" placeholder="192.168.1.10"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
+        autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
       <span class="field-hint">${t('tricasterIpHint')}</span>
     </div>
     <div class="field">
@@ -860,9 +957,9 @@ function renderRolandFields() {
     ${_steps(t('rolandGuide'), [t('rolandStep1'), t('rolandStep2'), t('rolandStep3'), t('rolandStep4'), t('rolandStep5')])}
     <div class="field">
       <span class="field-label">${t('rolandIpLabel')}</span>
-      <input class="input" type="text" id="rolandHost" list="dl-rolandHost"
+      <div class="probe-row"><input class="input" type="text" id="rolandHost" list="dl-rolandHost"
         value="${ui.savedRolandHost || '192.168.0.1'}" placeholder="192.168.0.1"
-        autocorrect="off" autocapitalize="off" spellcheck="false">
+        autocorrect="off" autocapitalize="off" spellcheck="false"><button class="probe-btn" onclick="doProbe(this)">${t('probeBtn')}</button></div>
       <span class="field-hint">${t('rolandIpHint')}</span>
     </div>
     <div class="field">
@@ -880,6 +977,7 @@ function renderRolandFields() {
 }
 
 function selectSwitcher(sw) {
+  if (ui.selectedSwitcher !== sw) { ui.probe = null; ui.probeOk = false }  // otra marca, otra prueba
   ui.selectedSwitcher = sw
   renderConnect(null)
 }
@@ -900,8 +998,8 @@ function renderConnected() {
       <div class="connected-wrap" id="connected-content">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div>
-            <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--grn);margin-bottom:3px;" id="conn-switcher-label">${switcherLabel}</div>
-            <div style="font-family:var(--sans);font-size:20px;font-weight:700;" id="conn-room-label">${t('room')}: \u2014</div>
+            <div class="conn-sub" id="conn-switcher-label">${switcherLabel}</div>
+            <div class="conn-room" id="conn-room-label">${t('room')}: \u2014</div>
           </div>
           <button class="disconnect-btn" onclick="doDisconnect()">${t('disconnect')}</button>
         </div>
@@ -924,13 +1022,16 @@ function renderConnected() {
           </div>
           ${swType==='obs' ? '<button class="auto-btn" onclick="autoDetect()">' + t('autoDetect') + '</button>' : ''}
         </div>
-        <table class="scene-table">
-          <thead><tr>
-            <th id="col-source">${colLabels[swType] || 'INPUT'}</th>
-            <th>${t('camTallycomm')}</th>
-          </tr></thead>
-          <tbody id="scene-tbody"></tbody>
-        </table>
+        <div class="map-two">
+          <table class="scene-table">
+            <thead><tr><th id="col-source">${colLabels[swType] || 'INPUT'}</th><th>${t('camTallycomm')}</th></tr></thead>
+            <tbody id="scene-tbody"></tbody>
+          </table>
+          <table class="scene-table">
+            <thead><tr><th>${colLabels[swType] || 'INPUT'}</th><th>${t('camTallycomm')}</th></tr></thead>
+            <tbody id="scene-tbody-2"></tbody>
+          </table>
+        </div>
       </div>`
   }
 
@@ -942,8 +1043,6 @@ function renderConnected() {
 
   updateTallyCards()
   renderSceneTable()
-  renderTestPanel()
-  document.getElementById('test-panel').style.display = 'block'
 }
 
 function updateTallyCards() {
@@ -979,13 +1078,15 @@ function getDisplayName(sceneName) {
 }
 
 function renderSceneTable() {
-  const tbody = document.getElementById('scene-tbody')
+  const tbody  = document.getElementById('scene-tbody')
+  const tbody2 = document.getElementById('scene-tbody-2')
   if (!tbody) return
   if (ui.scenes.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;font-family:var(--mono);font-size:10px;color:var(--txt4);text-align:center;">' + t('waitingSwitcher') + '</td></tr>'
+    tbody.innerHTML = '<tr><td colspan="2" style="padding:20px;font-family:var(--mono);font-size:11px;color:var(--txt3);text-align:center;">' + t('waitingSwitcher') + '</td></tr>'
+    if (tbody2) tbody2.innerHTML = ''
     return
   }
-  tbody.innerHTML = ui.scenes.map(s => {
+  const row = s => {
     const name    = s.sceneName
     const display = s.displayName || name
     const cam     = ui.mapping[name] || 0
@@ -1005,7 +1106,12 @@ function renderSceneTable() {
         </select>
       </td>
     </tr>`
-  }).join('')
+  }
+  // Split down the middle: a switcher like an 8-input Osee exposes eleven
+  // sources, and one long column pushed half of them below the fold.
+  const half = Math.ceil(ui.scenes.length / 2)
+  tbody.innerHTML = ui.scenes.slice(0, half).map(row).join('')
+  if (tbody2) tbody2.innerHTML = ui.scenes.slice(half).map(row).join('')
   updateTallyCards()
 }
 
@@ -1013,20 +1119,6 @@ function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')
 }
 
-function renderTestPanel() {
-  const tg = document.getElementById('test-grid')
-  if (!tg) return
-  const activeCams = [...new Set(Object.values(ui.mapping).map(Number).filter(Boolean))].sort()
-  if (!activeCams.length) {
-    tg.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--txt4);grid-column:span 2;">' + t('assignCams') + '</div>'
-    return
-  }
-  const cam = activeCams[0]
-  tg.innerHTML = `
-    <button class="test-btn pgm" onclick="testTally(${cam},'program')">CAM ${cam} PGM</button>
-    <button class="test-btn pvw" onclick="testTally(${cam},'preview')">CAM ${cam} PVW</button>
-    <button class="test-btn clr" onclick="testTally(${cam},'clear')" style="grid-column:span 2;">CAM ${cam} CLEAR</button>`
-}
 
 // ── FLASH ──────────────────────────────────────────────────────
 function flashCard(type) {
@@ -1123,14 +1215,6 @@ async function setMapping(sceneName, cameraNumber) {
   })
 }
 
-async function testTally(camera, bus) {
-  addLog({ msg: `Test \u2192 cam${camera} ${bus}`, type: 'info', ts: Date.now() })
-  await fetch('/api/test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ camera, bus })
-  })
-}
 
 function autoDetect() {
   let detected = 0
