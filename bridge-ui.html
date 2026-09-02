@@ -273,6 +273,9 @@ select.input option{background:#1a1a1a;}
 </div>
 
 <script>
+// Mirrors TALLYCOMM_MAX_CAM in bridge.js — TallyComm rejects anything above it.
+const MAX_CAM = 8
+
 // ── i18n ──────────────────────────────────────────────────────
 var _lang = (function() {
   var s = localStorage.getItem('tb-lang')
@@ -1151,7 +1154,7 @@ function renderSceneTable() {
     const rowCls  = isPgm ? ' pgm-row' : isPvw ? ' pvw-row' : ''
     const badge   = isPgm ? '<span class="scene-badge badge-pgm">PGM</span>' : isPvw ? '<span class="scene-badge badge-pvw">PVW</span>' : ''
     const opts    = '<option value="0"' + (!cam ? ' selected' : '') + '>\u2014 ' + t('ignore') + '</option>' +
-                    [1,2,3,4,5,6,7,8].map(n => `<option value="${n}"${cam===n?' selected':''}>CAM ${n}</option>`).join('')
+                    Array.from({length: MAX_CAM}, (_, k) => k + 1).map(n => `<option value="${n}"${cam===n?' selected':''}>CAM ${n}</option>`).join('')
     return `<tr class="scene-row${rowCls}">
       <td class="scene-name-cell">${esc(display)}${badge}</td>
       <td style="padding:4px 6px;">
@@ -1278,7 +1281,7 @@ function autoDetect() {
     const m = name.match(/(?:cam(?:era)?|c\u00e1mara)[\s\-_#]*(\d+)/i)
     if (m) {
       const cam = parseInt(m[1])
-      if (cam >= 1 && cam <= 6) { ui.mapping[name] = cam; setMapping(name, cam); detected++ }
+      if (cam >= 1 && cam <= MAX_CAM) { ui.mapping[name] = cam; setMapping(name, cam); detected++ }
     }
   })
   renderSceneTable()
