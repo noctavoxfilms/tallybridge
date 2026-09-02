@@ -73,6 +73,8 @@ function cmpVersions(a, b) {
   return 0
 }
 
+const DOWNLOAD_PAGE = 'https://tallycomm.com/bridge'
+
 let updateChecked = false
 function checkForUpdates() {
   if (updateChecked || !app.isPackaged) return   // no nagging while developing
@@ -104,10 +106,15 @@ function checkForUpdates() {
           title: APP_NAME,
           message: `Hay una versión nueva: ${latest}`,
           detail: `Tenés la v${app.getVersion()}. Podés seguir usando esta y actualizar cuando te quede cómodo.`,
-          buttons: ['Ver la actualización', 'Después'],
+          buttons: ['Ir a la descarga', 'Después'],
           defaultId: 0, cancelId: 1
         }).then(r => {
-          if (r.response === 0) shell.openExternal(rel.html_url || `https://github.com/${REPO}/releases/latest`)
+          // Send people to the official download page, not to the raw GitHub
+          // release: tallycomm.com/bridge already resolves the right build for
+          // their machine (Apple Silicon vs Intel) and carries the install
+          // notes. The GitHub API stays as the source of truth for *which*
+          // version is latest — it just isn't where we drop the user.
+          if (r.response === 0) shell.openExternal(DOWNLOAD_PAGE)
         }).catch(() => {})
       }
       notify()
