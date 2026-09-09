@@ -503,6 +503,11 @@
         channelCount: { ideal: 2 }
       })
       state.track = track
+      // Some macOS input routes are returned muted until the first consumer
+      // explicitly enables the MediaStreamTrack. LiveKit normally does this
+      // itself, but making it explicit prevents a published-but-silent IFB.
+      if (track.mediaStreamTrack) track.mediaStreamTrack.enabled = true
+      if (typeof track.unmute === 'function') track.unmute()
       track.mediaStreamTrack.onended = function () {
         if (!state.stopping && state.running) void stop('input-ended')
       }
