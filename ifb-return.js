@@ -18,6 +18,14 @@
     source: null,
     meterSink: null,
     meterFrame: 0,
+    // The console output is commonly a line-level feed arriving below the
+    // browser microphone nominal level. Keep the gain stage in Bridge, where
+    // production can meter it, instead of making Talent compensate locally.
+    captureStream: null,
+    captureSource: null,
+    captureGain: null,
+    captureDestination: null,
+    captureTrack: null,
     inputListPending: false,
     inputAccessAttempted: false,
     inputAccessError: null,
@@ -275,6 +283,31 @@
     if (value) value.textContent = '0%'
   }
 
+  function stopCaptureGraph() {
+    if (state.captureSource) {
+      try { state.captureSource.disconnect() } catch (error) {}
+      state.captureSource = null
+    }
+    if (state.captureGain) {
+      try { state.captureGain.disconnect() } catch (error) {}
+      state.captureGain = null
+    }
+    if (state.captureDestination) {
+      try { state.captureDestination.disconnect() } catch (error) {}
+      state.captureDestination = null
+    }
+    if (state.captureTrack) {
+      try { state.captureTrack.stop() } catch (error) {}
+      state.captureTrack = null
+    }
+    if (state.captureStream) {
+      state.captureStream.getTracks().forEach(function (track) {
+        try { track.stop() } catch (error) {}
+      })
+      state.captureStream = null
+    }
+  }
+
   function drawMeter() {
     if (!state.analyser) return
     var samples = new Float32Array(state.analyser.fftSize)
@@ -409,7 +442,6 @@
   }
 
   async function release() {
-    stopMeter()
     var room = state.room
     var track = state.track
     state.room = null
@@ -423,6 +455,8 @@
     if (track) {
       try { track.stop() } catch (error) {}
     }
+    stopCaptureGraph()
+    stopMeter()
     if (room) {
       try { await room.disconnect() } catch (error) {}
     }
@@ -541,13 +575,38 @@
 
       state.statusText = tr('ifbReturnOpeningInput', 'ABRIENDO ENTRADA DE CONSOLA…')
       renderStatus()
-      var track = await LK.createLocalAudioTrack({
-        deviceId: { exact: state.deviceId },
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        channelCount: { ideal: 2 }
-      })
+      // Capture through a Web Audio gain stage before handing the track to
+      // LiveKit. A console/Program-Minus feed often arrives 10–15 dB below a
+      // browser microphone's nominal level; a 12 dB trim restores usable
+      // headroom while the Bridge meter shows the post-trim signal. Talent
+      // remains at unity and uses the phone's hardware volume.
+      var inputConstraints = {
+        audio: {
+          deviceId: { exact: state.deviceId },
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+          channelCount: { ideal: 2 }
+        },
+        video: false
+      }
+      state.captureStream = await navigator.mediaDevices.getUserMedia(inputConstraints)
+      state.captureTrack = state.captureStream.getAudioTracks()[0]
+      if (!state.captureTrack) throw new Error('No audio track from selected input')
+      state.captureTrack.enabled = true
+      if (!state.audioCtx) prepareMeterContext()
+      if (!state.audioCtx) throw new Error('Audio context unavailable')
+      await state.audioCtx.resume().catch(function () {})
+      state.captureSource = state.audioCtx.createMediaStreamSource(state.captureStream)
+      state.captureGain = state.audioCtx.createGain()
+      state.captureGain.gain.value = 4
+      state.captureDestination = state.audioCtx.createMediaStreamDestination()
+      state.captureSource.connect(state.captureGain)
+      state.captureGain.connect(state.captureDestination)
+      var processedTrack = state.captureDestination.stream.getAudioTracks()[0]
+      if (!processedTrack) throw new Error('No processed audio track')
+      processedTrack.enabled = true
+      var track = new LK.LocalAudioTrack(processedTrack, { deviceId: { exact: state.deviceId } })
       state.track = track
       // Some macOS input routes are returned muted until the first consumer
       // explicitly enables the MediaStreamTrack. LiveKit normally does this
