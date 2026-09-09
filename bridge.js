@@ -34,6 +34,15 @@ app.use('/assets', express.static(path.join(__dirname, 'assets'), {
   fallthrough: false
 }))
 
+// Isolated, opt-in capability probes live outside the production UI paths.
+// They are never loaded by a normal TallyBridge launch and cannot connect to
+// TallyComm. The IFB capture probe lets us verify Electron can see and meter a
+// console input before we add LiveKit publishing or any event credentials.
+app.use('/spike', express.static(path.join(__dirname, 'spike'), {
+  maxAge: 0,
+  fallthrough: false
+}))
+
 // ── Persistencia ──────────────────────────────────────────────
 const SAVE_FILE = path.join(
   process.env.APPDATA || process.env.HOME || __dirname,

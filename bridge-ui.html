@@ -156,6 +156,25 @@ select.input option{background:#1a1a1a;}
 .pick-hint{font-family:var(--mono);font-size:12px;color:var(--txt2);text-align:center;padding:18px 12px;line-height:1.6;}
 .error-msg{background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius);padding:10px 14px;font-family:var(--mono);font-size:10px;color:var(--red);line-height:1.6;margin-top:12px;}
 
+/* IFB return capability probe — only mounted with ?ifb-spike=1. It deliberately
+   shares TallyBridge's operational language without becoming product UI. */
+.ifb-spike-wrap{max-width:720px;margin:54px auto;padding:0 24px;}
+.ifb-spike-kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--blu);margin-bottom:10px;}
+.ifb-spike-wrap h1{font-size:36px;line-height:1;font-weight:900;letter-spacing:.02em;margin-bottom:10px;}
+.ifb-spike-wrap>p{font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--txt3);max-width:560px;}
+.ifb-spike-card{margin-top:28px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);padding:22px;}
+.ifb-spike-card label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--txt2);margin-bottom:8px;}
+.ifb-spike-meter{height:12px;background:var(--bg);border:1px solid var(--b2);margin-top:22px;overflow:hidden;}
+.ifb-spike-meter>div{height:100%;width:0;background:var(--grn);transition:width .07s linear;}
+.ifb-spike-level{display:flex;justify-content:space-between;margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--txt3);letter-spacing:.1em;}
+.ifb-spike-level strong{font-weight:400;color:var(--grn);}
+.ifb-spike-actions{display:flex;gap:8px;margin-top:22px;}
+.ifb-spike-actions button{flex:1;padding:12px;border:1px solid var(--b2);border-radius:var(--radius);background:var(--s2);color:var(--txt);font-family:var(--sans);font-size:15px;font-weight:700;letter-spacing:.08em;cursor:pointer;}
+.ifb-spike-actions button:first-child{background:var(--blu);border-color:var(--blu);color:#07111d;}
+.ifb-spike-actions button:disabled{opacity:.4;cursor:default;}
+.ifb-spike-state{margin-top:14px;padding:9px 10px;border:1px solid var(--b1);font-family:var(--mono);font-size:10px;letter-spacing:.06em;}
+.ifb-spike-state.idle{color:var(--txt3);}.ifb-spike-state.connecting{color:var(--ylw);border-color:rgba(255,196,0,.45);}.ifb-spike-state.active{color:var(--grn);border-color:rgba(45,212,100,.45);}.ifb-spike-state.error{color:var(--red);border-color:rgba(255,59,59,.45);}
+
 /* CONNECTED VIEW */
 .connected-wrap{padding:20px;}
 /* Durante el show el cromo cede el protagonismo al tally, pero sin caer por
@@ -561,6 +580,10 @@ es.addEventListener('log',    e => addLog(JSON.parse(e.data)))
 es.addEventListener('tally',  e => onTally(JSON.parse(e.data)))
 
 function onStatus(d) {
+  // The IFB capture probe owns #main-area while it is active. Keep its
+  // deliberately isolated diagnostic UI from being replaced by normal
+  // switcher status renders.
+  if (window.TallyBridgeIfbCaptureSpike) return
   ui.connected  = d.connected
   ui.connecting = d.connecting
   ui.pgmScene   = d.pgmScene
@@ -635,12 +658,14 @@ function onStatus(d) {
 }
 
 function onScenes(d) {
+  if (window.TallyBridgeIfbCaptureSpike) return
   ui.scenes  = d.scenes  || []
   ui.mapping = d.mapping || {}
   if (ui.connected) renderSceneTable()
 }
 
 function onTally(d) {
+  if (window.TallyBridgeIfbCaptureSpike) return
   if (d.bus === 'program') flashCard('pgm')
   if (d.bus === 'preview') flashCard('pvw')
 }
@@ -1340,5 +1365,6 @@ document.documentElement.lang = _lang
 applyLang()
 renderConnect(null)
 </script>
+<script src="/spike/ifb-capture-spike.js"></script>
 </body>
 </html>
