@@ -16,7 +16,9 @@
     audioCtx: null,
     analyser: null,
     source: null,
+    meterSink: null,
     meterFrame: 0,
+    inputListPending: false,
     running: false,
     starting: false,
     refreshing: false,
@@ -156,7 +158,7 @@
 
   async function listInputs() {
     var select = byId('ifb-return-device')
-    if (!select || state.running || state.starting) return
+    if (!select || state.running || state.starting || state.inputListPending) return
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
       state.status = 'error'
       state.statusText = tr('ifbReturnUnsupported', 'ESTA VERSIÓN NO ADMITE ENTRADAS DE AUDIO')
@@ -165,6 +167,7 @@
       return
     }
 
+    state.inputListPending = true
     try {
       var devices = await navigator.mediaDevices.enumerateDevices()
       var inputs = devices.filter(function (device) { return device.kind === 'audioinput' })
@@ -194,6 +197,8 @@
     } catch (error) {
       state.status = 'error'
       state.statusText = tr('ifbReturnInputsFailed', 'NO SE PUDIERON LEER LAS ENTRADAS DE AUDIO')
+    } finally {
+      state.inputListPending = false
     }
     renderStatus()
     renderControls()
@@ -210,6 +215,10 @@
       try { state.analyser.disconnect() } catch (error) {}
       state.analyser = null
     }
+    if (state.meterSink) {
+      try { state.meterSink.disconnect() } catch (error) {}
+      state.meterSink = null
+    }
     if (state.audioCtx) {
       state.audioCtx.close().catch(function () {})
       state.audioCtx = null
@@ -222,12 +231,17 @@
 
   function drawMeter() {
     if (!state.analyser) return
-    var samples = new Uint8Array(state.analyser.fftSize)
-    state.analyser.getByteTimeDomainData(samples)
+    var samples = new Float32Array(state.analyser.fftSize)
+    if (typeof state.analyser.getFloatTimeDomainData === 'function') {
+      state.analyser.getFloatTimeDomainData(samples)
+    } else {
+      var bytes = new Uint8Array(state.analyser.fftSize)
+      state.analyser.getByteTimeDomainData(bytes)
+      for (var b = 0; b < bytes.length; b++) samples[b] = (bytes[b] - 128) / 128
+    }
     var sum = 0
     for (var i = 0; i < samples.length; i++) {
-      var normalized = (samples[i] - 128) / 128
-      sum += normalized * normalized
+      sum += samples[i] * samples[i]
     }
     var level = Math.min(100, Math.round(Math.sqrt(sum / samples.length) * 320))
     var fill = byId('ifb-return-meter-fill')
@@ -241,17 +255,40 @@
     var AudioContextClass = window.AudioContext || window.webkitAudioContext
     if (!AudioContextClass || !track || !track.mediaStreamTrack) return
     try {
-      state.audioCtx = new AudioContextClass()
+      // Prefer a context created by the Start button's user gesture. Creating
+      // it only after the token/LiveKit awaits can leave Chromium's context in
+      // `suspended`, which produces a permanently flat meter even though the
+      // published track is valid.
+      if (!state.audioCtx) state.audioCtx = new AudioContextClass()
       state.source = state.audioCtx.createMediaStreamSource(new MediaStream([track.mediaStreamTrack]))
       state.analyser = state.audioCtx.createAnalyser()
       state.analyser.fftSize = 1024
+      state.analyser.smoothingTimeConstant = 0.2
       state.source.connect(state.analyser)
+      // An analyser that is left at the end of a graph is optimized away by
+      // some Chromium/Electron audio backends. Keep it alive through a zero-
+      // gain sink so metering works without feeding the input back to speakers.
+      state.meterSink = state.audioCtx.createGain()
+      state.meterSink.gain.value = 0
+      state.analyser.connect(state.meterSink)
+      state.meterSink.connect(state.audioCtx.destination)
       state.audioCtx.resume().catch(function () {})
       drawMeter()
     } catch (error) {
       // Metering is informative only. A console input must still be able to
       // publish when an older renderer lacks Web Audio support.
       stopMeter()
+    }
+  }
+
+  function prepareMeterContext() {
+    var AudioContextClass = window.AudioContext || window.webkitAudioContext
+    if (!AudioContextClass || state.audioCtx) return
+    try {
+      state.audioCtx = new AudioContextClass()
+      if (state.audioCtx.state === 'suspended') state.audioCtx.resume().catch(function () {})
+    } catch (error) {
+      state.audioCtx = null
     }
   }
 
@@ -360,6 +397,8 @@
       state.stopping = false
       renderStatus()
       renderControls()
+      // A manual stop must leave the input chooser immediately usable.
+      if (!state.running) void listInputs()
     }
   }
 
@@ -372,6 +411,10 @@
       state.statusText = messageFor(error)
       renderStatus()
       renderControls()
+      // A failed authorization/connection must leave the input chooser ready
+      // for another attempt. If the card was re-rendered during `starting`,
+      // its new select is empty until this refresh repopulates it.
+      if (!state.running) void listInputs()
     }
   }
 
@@ -405,6 +448,7 @@
     // switcher connection. Failure to persist does not block a live start;
     // the current values are still sent to the local proxy below.
     void persistConfig(config)
+    prepareMeterContext()
     if (!window.LivekitClient || !window.LivekitClient.Room || !window.LivekitClient.createLocalAudioTrack) {
       state.status = 'error'
       state.statusText = tr('ifbReturnSdkMissing', 'EL MÓDULO DE RETORNO NO ESTÁ DISPONIBLE')
@@ -436,6 +480,7 @@
           state.statusText = tr('ifbReturnConnectionLost', 'SE PERDIÓ LA CONEXIÓN DEL RETORNO')
           renderStatus()
           renderControls()
+          if (!state.running) void listInputs()
         })
       })
       await room.connect(auth.livekitUrl, auth.token, { autoSubscribe: false })
@@ -492,6 +537,8 @@
     if (byId('ifb-return-card') && byId('ifb-return-room') && byId('ifb-return-room').dataset.ifbWired === '1') {
       renderStatus()
       renderControls()
+      var existingInput = byId('ifb-return-device')
+      if (!state.running && !state.starting && existingInput && !existingInput.options.length) void listInputs()
       return
     }
     ;['ifb-return-room', 'ifb-return-api-key'].forEach(function (id) {
