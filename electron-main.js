@@ -182,6 +182,28 @@ function createWindow() {
     icon: path.join(__dirname, 'icon.png')
   })
 
+  // The IFB return is the only feature that needs an input device. Keep the
+  // permission surface as narrow as the product contract: our loopback UI may
+  // request audio after an explicit button click; every other origin and any
+  // video capture request are denied.
+  const isLocalBridgeOrigin = url => {
+    try {
+      const parsed = new URL(url)
+      return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' &&
+        parsed.port === String(PORT)
+    } catch (e) { return false }
+  }
+  const session = mainWindow.webContents.session
+  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) => {
+    if (permission !== 'media' || !isLocalBridgeOrigin(requestingOrigin)) return false
+    return !details || !details.mediaType || details.mediaType === 'audio'
+  })
+  session.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const audioOnly = details && Array.isArray(details.mediaTypes) &&
+      details.mediaTypes.includes('audio') && !details.mediaTypes.includes('video')
+    callback(permission === 'media' && isLocalBridgeOrigin(webContents.getURL()) && audioOnly)
+  })
+
   mainWindow.loadURL(`http://127.0.0.1:${PORT}`)
 
   mainWindow.once('ready-to-show', () => {

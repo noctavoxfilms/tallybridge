@@ -15,6 +15,7 @@
   "dependencies": {
     "atem-connection": "^3.9.0",
     "express": "^4.18.0",
+    "livekit-client": "2.15.0",
     "ws": "^8.17.0"
   },
   "devDependencies": {
@@ -29,6 +30,7 @@
       "electron-main.js",
       "bridge.js",
       "bridge-ui.html",
+      "ifb-return.js",
       "assets/brand/*.png",
       "node_modules/**",
       "!node_modules/electron-builder/**",
@@ -43,6 +45,9 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": {
         "teamId": "8922S5NL5T"
+      },
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "TallyBridge uses the selected console audio input to send Program-Minus only to authorized on-camera talent."
       },
       "target": [
         {

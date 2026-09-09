@@ -224,6 +224,34 @@ select.input option{background:#1a1a1a;}
 .disconnect-btn{padding:7px 14px;background:var(--s2);border:1px solid var(--b1);border-radius:var(--radius);color:var(--txt3);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.08em;transition:all .12s;}
 .disconnect-btn:hover{border-color:var(--red);color:var(--red);}
 
+/* IFB RETURN — intentionally operational, not a second mixer. It inherits the
+   existing monitor visual language and stays physically separate from tally
+   mapping so the source cannot be mistaken for a camera control. */
+.ifb-return{margin:0 0 20px;padding:16px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);}
+.ifb-return-head{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;}
+.ifb-return-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--blu);}
+.ifb-return-title{margin-top:3px;font-size:18px;font-weight:800;letter-spacing:.05em;color:var(--txt2);}
+.ifb-return-chip{flex-shrink:0;padding:5px 8px;border:1px solid var(--b2);border-radius:2px;color:var(--txt4);font-family:var(--mono);font-size:9px;letter-spacing:.09em;}
+.ifb-return-chip.active{border-color:var(--grn);background:var(--grn-bg);color:var(--grn);}
+.ifb-return-chip.error{border-color:var(--red);background:var(--red-bg);color:var(--red);}
+.ifb-return-note{max-width:740px;margin:8px 0 14px;font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--txt3);}
+.ifb-return-controls{display:grid;grid-template-columns:minmax(190px,1fr) minmax(150px,1fr) auto;gap:12px;align-items:end;}
+.ifb-return-controls .field{margin:0;}
+.ifb-return-meter-wrap{padding-bottom:1px;}
+.ifb-return-meter{height:8px;overflow:hidden;background:var(--bg);border:1px solid var(--b1);border-radius:999px;}
+.ifb-return-meter-fill{height:100%;width:0;background:linear-gradient(90deg,var(--grn),var(--ylw));transition:width .08s linear;}
+.ifb-return-meter-label{display:flex;justify-content:space-between;margin-top:6px;font-family:var(--mono);font-size:9px;letter-spacing:.09em;color:var(--txt4);}
+.ifb-return-meter-label strong{font-weight:400;color:var(--txt3);}
+.ifb-return-actions{display:flex;gap:7px;}
+.ifb-return-actions button{min-height:37px;padding:0 12px;border-radius:var(--radius);font-family:var(--mono);font-size:10px;letter-spacing:.08em;cursor:pointer;transition:all .12s;}
+.ifb-return-start{border:1px solid rgba(61,158,255,.55);background:var(--blu-bg);color:var(--blu);}
+.ifb-return-start:hover:not(:disabled){border-color:var(--blu);color:#d8ecff;}
+.ifb-return-stop{border:1px solid var(--b2);background:var(--s2);color:var(--txt3);}
+.ifb-return-stop:hover:not(:disabled){border-color:var(--red);color:var(--red);}
+.ifb-return-actions button:disabled{opacity:.42;cursor:default;}
+.ifb-return-state{margin-top:12px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--txt4);}
+.ifb-return-state.connecting{color:var(--ylw);}.ifb-return-state.active{color:var(--grn);}.ifb-return-state.error{color:var(--red);}
+
 /* SIDEBAR LOG */
 .sidebar-header{padding:12px 14px;border-bottom:1px solid var(--b1);font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--txt4);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
 .clear-log{padding:3px 8px;background:var(--s2);border:1px solid var(--b1);border-radius:2px;color:var(--txt4);font-family:var(--mono);font-size:9px;cursor:pointer;transition:all .1s;}
@@ -250,6 +278,7 @@ select.input option{background:#1a1a1a;}
   .layout{flex-direction:column;}
   .sidebar{width:100%;border-left:none;border-top:1px solid var(--b1);height:220px;}
   .tally-monitor{grid-template-columns:1fr 1fr;}
+  .ifb-return-controls{grid-template-columns:1fr;}
 }
 </style>
 </head>
@@ -383,6 +412,36 @@ var _i = {
   enterApiKey:      { en: 'API Key is required. Get it from your event dashboard.', es: 'La API Key es obligatoria. Obtenela desde el dashboard del evento.' },
   selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
   connectedTo:      { en: 'CONNECTED TO',    es: 'CONECTADO A' },
+  ifbReturnTitle:   { en: 'TALENT RETURN',   es: 'RETORNO PARA TALENT' },
+  ifbReturnNote:    { en: 'Publishes the selected Program-Minus mix only to authorized talent. It does not open camera or crew intercom.', es: 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.' },
+  ifbReturnInput:   { en: 'CONSOLE INPUT',   es: 'ENTRADA DE CONSOLA' },
+  ifbReturnLevel:   { en: 'INPUT LEVEL',     es: 'NIVEL DE ENTRADA' },
+  ifbReturnStart:   { en: 'START RETURN',    es: 'INICIAR RETORNO' },
+  ifbReturnStarting:{ en: 'PREPARING…',      es: 'PREPARANDO…' },
+  ifbReturnStop:    { en: 'STOP',            es: 'DETENER' },
+  ifbReturnOnAir:   { en: 'ON AIR',          es: 'AL AIRE' },
+  ifbReturnOff:     { en: 'OFF',             es: 'APAGADO' },
+  ifbReturnReady:   { en: 'READY TO START RETURN', es: 'LISTO PARA INICIAR EL RETORNO' },
+  ifbReturnNoInput: { en: 'No audio inputs available', es: 'No hay entradas de audio disponibles' },
+  ifbReturnNoInputState:{ en: 'NO AUDIO INPUT', es: 'SIN ENTRADA DE AUDIO' },
+  ifbReturnInputNumber:{ en: 'Audio input {n}', es: 'Entrada de audio {n}' },
+  ifbReturnSelectedInput:{ en: 'Selected audio input', es: 'Entrada de audio seleccionada' },
+  ifbReturnUnsupported:{ en: 'THIS VERSION DOES NOT SUPPORT AUDIO INPUTS', es: 'ESTA VERSIÓN NO ADMITE ENTRADAS DE AUDIO' },
+  ifbReturnInputsFailed:{ en: 'COULD NOT READ AUDIO INPUTS', es: 'NO SE PUDIERON LEER LAS ENTRADAS DE AUDIO' },
+  ifbReturnChooseInput:{ en: 'CHOOSE A CONSOLE INPUT', es: 'ELEGÍ UNA ENTRADA DE CONSOLA' },
+  ifbReturnAuthorizing:{ en: 'VALIDATING IFB RETURN…', es: 'VALIDANDO RETORNO IFB…' },
+  ifbReturnConnecting:{ en: 'CONNECTING IFB RETURN…', es: 'CONECTANDO RETORNO IFB…' },
+  ifbReturnOpeningInput:{ en: 'OPENING CONSOLE INPUT…', es: 'ABRIENDO ENTRADA DE CONSOLA…' },
+  ifbReturnActive:{ en: 'PROGRAM-MINUS ACTIVE FOR AUTHORIZED TALENT', es: 'PROGRAM-MINUS ACTIVO PARA TALENT AUTORIZADO' },
+  ifbReturnStopped:{ en: 'RETURN STOPPED', es: 'RETORNO DETENIDO' },
+  ifbReturnBridgeStopped:{ en: 'RETURN STOPPED WHEN TALLYBRIDGE DISCONNECTED', es: 'RETORNO DETENIDO AL DESCONECTAR TALLYBRIDGE' },
+  ifbReturnPermissionDenied:{ en: 'AUDIO INPUT PERMISSION DENIED', es: 'PERMISO DE ENTRADA DENEGADO' },
+  ifbReturnDeviceMissing:{ en: 'THE SELECTED INPUT IS NOT AVAILABLE', es: 'LA ENTRADA SELECCIONADA NO ESTÁ DISPONIBLE' },
+  ifbReturnFailed:{ en: 'COULD NOT START RETURN', es: 'NO SE PUDO INICIAR EL RETORNO' },
+  ifbReturnTokenInvalid:{ en: 'INVALID IFB RESPONSE', es: 'RESPUESTA IFB INVÁLIDA' },
+  ifbReturnTokenFailed:{ en: 'COULD NOT AUTHORIZE RETURN', es: 'NO SE PUDO AUTORIZAR EL RETORNO' },
+  ifbReturnSdkMissing:{ en: 'RETURN MODULE IS NOT AVAILABLE', es: 'EL MÓDULO DE RETORNO NO ESTÁ DISPONIBLE' },
+  ifbReturnConnectionLost:{ en: 'RETURN CONNECTION LOST', es: 'SE PERDIÓ LA CONEXIÓN DEL RETORNO' },
   // OBS
   obsTitle:         { en: 'OBS STUDIO',      es: 'OBS STUDIO' },
   obsGuide:         { en: 'HOW TO ENABLE WEBSOCKET IN OBS', es: 'COMO ACTIVAR WEBSOCKET EN OBS' },
@@ -501,6 +560,7 @@ var _i = {
 }
 
 function t(k) { return (_i[k] && _i[k][_lang]) || k }
+window.TallyBridgeText = t
 
 function toggleLang() {
   _lang = _lang === 'en' ? 'es' : 'en'
@@ -653,7 +713,10 @@ function onStatus(d) {
   dot.style.boxShadow   = d.connected ? '0 0 8px var(--grn)' : d.connecting ? '0 0 8px var(--ylw)' : '0 0 8px var(--red)'
 
   if (d.connected) renderConnected()
-  else renderConnect(d.error)
+  else {
+    if (window.TallyBridgeIfbReturn) void window.TallyBridgeIfbReturn.stop('bridge-disconnected')
+    renderConnect(d.error)
+  }
   if (d.error && !d.connecting) addLog({ msg: d.error, type: 'error', ts: Date.now() })
 }
 
@@ -1098,6 +1161,7 @@ function renderConnected() {
             <div class="tally-card-scene" id="pvw-scene">${t('noSignal')}</div>
           </div>
         </div>
+        <div id="ifb-return-slot"></div>
         <div class="section-header">
           <div>
             <div class="section-title" id="mapping-title">${mapTitles[swType] || ''}</div>
@@ -1126,6 +1190,7 @@ function renderConnected() {
 
   updateTallyCards()
   renderSceneTable()
+  if (window.TallyBridgeIfbReturn) window.TallyBridgeIfbReturn.mount()
 }
 
 function updateTallyCards() {
@@ -1286,6 +1351,7 @@ async function doConnect() {
 }
 
 async function doDisconnect() {
+  if (window.TallyBridgeIfbReturn) await window.TallyBridgeIfbReturn.stop('manual')
   await fetch('/api/disconnect', { method: 'POST' })
 }
 
@@ -1365,6 +1431,8 @@ document.documentElement.lang = _lang
 applyLang()
 renderConnect(null)
 </script>
+<script src="/vendor/livekit-client/livekit-client.umd.js"></script>
+<script src="/ifb-return.js"></script>
 <script src="/spike/ifb-capture-spike.js"></script>
 </body>
 </html>

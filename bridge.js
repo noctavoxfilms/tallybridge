@@ -42,6 +42,17 @@ app.use('/spike', express.static(path.join(__dirname, 'spike'), {
   maxAge: 0,
   fallthrough: false
 }))
+// The IFB publisher lives in the renderer so it can access the selected
+// console input. Serve the pinned local SDK rather than relying on a CDN
+// during a live show.
+app.use('/vendor/livekit-client', express.static(path.join(__dirname, 'node_modules', 'livekit-client', 'dist'), {
+  maxAge: 0,
+  fallthrough: false
+}))
+app.get('/ifb-return.js', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store')
+  res.sendFile(path.join(__dirname, 'ifb-return.js'))
+})
 
 // ── Persistencia ──────────────────────────────────────────────
 const SAVE_FILE = path.join(
@@ -2048,6 +2059,46 @@ app.post('/api/mapping', (req, res) => {
   saveToDisk()
   sse('scenes', { scenes: state.scenes, mapping: state.mapping })
   res.json({ ok: true, mapping: state.mapping })
+})
+
+// Mint a short-lived, event-scoped return-source token through TallyComm.
+// The renderer never calls the cloud endpoint directly: this local proxy keeps
+// the existing Bridge authentication model (room + switcher API key) and
+// avoids a browser CORS exception during a show.
+app.post('/api/ifb/token', async (req, res) => {
+  const room = String(state.config.tallyRoom || '').trim()
+  const apiKey = String(state.config.tallyApiKey || '').trim()
+  const baseUrl = String(state.config.tallyUrl || '').replace(/\/$/, '')
+  if (!room) return res.status(400).json({ error: 'Configurá la sala antes de iniciar el retorno IFB' })
+  if (!apiKey) return res.status(400).json({ error: 'Configurá la API Key del evento antes de iniciar el retorno IFB' })
+  if (!baseUrl) return res.status(400).json({ error: 'Configurá la URL de TallyComm antes de iniciar el retorno IFB' })
+  if (!_isByteStringSafe(apiKey)) return res.status(400).json({ error: 'API Key inválida' })
+
+  const timeout = new AbortController()
+  const timer = setTimeout(() => timeout.abort(), 8000)
+  try {
+    const upstream = await fetch(baseUrl + '/api/ifb/bridge-token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-tallycomm-key': apiKey
+      },
+      body: JSON.stringify({ room }),
+      signal: timeout.signal
+    })
+    const data = await upstream.json().catch(() => ({ error: 'Respuesta IFB inválida de TallyComm' }))
+    if (!upstream.ok) {
+      log('IFB return no disponible: ' + (data.error || upstream.status), 'warn', 'logIfbTokenFail')
+      return res.status(upstream.status).json(data)
+    }
+    res.json(data)
+  } catch (e) {
+    const message = e && e.name === 'AbortError' ? 'Tiempo agotado al pedir el retorno IFB' : 'No se pudo conectar al servicio IFB'
+    log(message, 'warn', 'logIfbTokenNetworkFail')
+    res.status(502).json({ error: message })
+  } finally {
+    clearTimeout(timer)
+  }
 })
 
 const SWITCHERS = ['obs','vmix','atem','tricaster','roland','osee','rgblink','avmatrix']

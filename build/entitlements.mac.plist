@@ -29,5 +29,10 @@
   <!-- Inbound: local Express server on localhost:4000 (config UI). -->
   <key>com.apple.security.network.server</key>
   <true/>
+
+  <!-- Explicit user action in the IFB return card can open the selected
+       console audio input. Required for a sandboxed/notarized macOS build. -->
+  <key>com.apple.security.device.audio-input</key>
+  <true/>
 </dict>
 </plist>
