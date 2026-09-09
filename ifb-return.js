@@ -19,6 +19,7 @@
     meterFrame: 0,
     running: false,
     starting: false,
+    refreshing: false,
     stopping: false,
     deviceId: '',
     deviceLabel: '',
@@ -71,6 +72,7 @@
       '    </div>',
       '    <div class="ifb-return-actions">',
       '      <button class="ifb-return-start" id="ifb-return-start" type="button" ' + (active || state.starting ? 'disabled' : '') + '>' + escapeHtml(state.starting ? tr('ifbReturnStarting', 'PREPARANDO…') : tr('ifbReturnStart', 'INICIAR RETORNO')) + '</button>',
+      '      <button class="ifb-return-refresh" id="ifb-return-refresh" type="button" ' + (!active || state.refreshing ? 'disabled' : '') + '>' + escapeHtml(state.refreshing ? tr('ifbReturnRefreshing', 'ACTUALIZANDO…') : tr('ifbReturnRefresh', 'ACTUALIZAR TALENTS')) + '</button>',
       '      <button class="ifb-return-stop" id="ifb-return-stop" type="button" ' + (!active ? 'disabled' : '') + '>' + escapeHtml(tr('ifbReturnStop', 'DETENER')) + '</button>',
       '    </div>',
       '  </div>',
@@ -94,6 +96,7 @@
 
   function renderControls() {
     var start = byId('ifb-return-start')
+    var refresh = byId('ifb-return-refresh')
     var stop = byId('ifb-return-stop')
     var input = byId('ifb-return-device')
     if (start) {
@@ -101,6 +104,10 @@
       start.textContent = state.starting ? tr('ifbReturnStarting', 'PREPARANDO…') : tr('ifbReturnStart', 'INICIAR RETORNO')
     }
     if (stop) stop.disabled = !state.running
+    if (refresh) {
+      refresh.disabled = !state.running || state.refreshing
+      refresh.textContent = state.refreshing ? tr('ifbReturnRefreshing', 'ACTUALIZANDO…') : tr('ifbReturnRefresh', 'ACTUALIZAR TALENTS')
+    }
     if (input) input.disabled = state.running || state.starting
   }
 
@@ -205,12 +212,12 @@
     }
   }
 
-  function authIsValid(data) {
+  function authIsValid(data, allowEmptyRecipients) {
     return data && typeof data.token === 'string' && data.token.length > 20 &&
       typeof data.livekitUrl === 'string' && /^wss?:\/\//.test(data.livekitUrl) &&
       data.identity === 'tallybridge-ifb-return' &&
       data.trackName === 'ifb-program-minus' &&
-      Array.isArray(data.talentIdentities) && data.talentIdentities.length > 0 &&
+      Array.isArray(data.talentIdentities) && (allowEmptyRecipients || data.talentIdentities.length > 0) &&
       data.talentIdentities.every(function (identity) { return typeof identity === 'string' && /^[a-z0-9-]{1,128}$/i.test(identity) })
   }
 
@@ -220,12 +227,54 @@
     return error && error.message ? error.message : tr('ifbReturnFailed', 'NO SE PUDO INICIAR EL RETORNO')
   }
 
-  async function requestAuthorization() {
+  async function requestAuthorization(allowEmptyRecipients) {
     var response = await fetch('/api/ifb/token', { method: 'POST' })
     var data = await response.json().catch(function () { return { error: tr('ifbReturnTokenInvalid', 'RESPUESTA IFB INVÁLIDA') } })
     if (!response.ok) throw new Error(data.error || tr('ifbReturnTokenFailed', 'NO SE PUDO AUTORIZAR EL RETORNO'))
-    if (!authIsValid(data)) throw new Error(tr('ifbReturnTokenInvalid', 'RESPUESTA IFB INVÁLIDA'))
+    if (!authIsValid(data, !!allowEmptyRecipients)) throw new Error(tr('ifbReturnTokenInvalid', 'RESPUESTA IFB INVÁLIDA'))
     return data
+  }
+
+  async function refreshRecipients() {
+    if (!state.running || !state.room || state.refreshing || state.stopping) return
+    var targetRoom = state.room
+    state.refreshing = true
+    state.status = 'connecting'
+    state.statusText = tr('ifbReturnRefreshing', 'ACTUALIZANDO DESTINATARIOS…')
+    renderStatus()
+    renderControls()
+    try {
+      var auth = await requestAuthorization(true)
+      // A roster refresh must remain bound to the same event transport. If the
+      // event changed underneath us, keep the current source alive and ask the
+      // operator to restart it deliberately rather than repointing mid-show.
+      if (state.stopping || !state.running || state.room !== targetRoom || !state.auth ||
+          auth.livekitUrl !== state.auth.livekitUrl || auth.room !== state.auth.room ||
+          auth.identity !== state.auth.identity || auth.trackName !== state.auth.trackName) {
+        if (!state.stopping && state.running) {
+          state.status = 'active'
+          state.statusText = tr('ifbReturnRecipientsFailed', 'NO SE ACTUALIZARON LOS DESTINATARIOS; RETORNO ACTIVO')
+        }
+        return
+      }
+      targetRoom.localParticipant.setTrackSubscriptionPermissions(false,
+        auth.talentIdentities.map(function (identity) {
+          return { participantIdentity: identity, allowAll: true }
+        })
+      )
+      state.auth = auth
+      state.status = 'active'
+      state.statusText = tr('ifbReturnRecipientsUpdated', 'DESTINATARIOS TALENT ACTUALIZADOS')
+    } catch (error) {
+      if (!state.stopping && state.running) {
+        state.status = 'active'
+        state.statusText = tr('ifbReturnRecipientsFailed', 'NO SE ACTUALIZARON LOS DESTINATARIOS; RETORNO ACTIVO')
+      }
+    } finally {
+      state.refreshing = false
+      renderStatus()
+      renderControls()
+    }
   }
 
   async function release() {
@@ -236,6 +285,7 @@
     state.track = null
     state.auth = null
     state.running = false
+    state.refreshing = false
     if (room && track) {
       try { await room.localParticipant.unpublishTrack(track) } catch (error) {}
     }
@@ -380,8 +430,10 @@
       renderControls()
     })
     var startButton = byId('ifb-return-start')
+    var refreshButton = byId('ifb-return-refresh')
     var stopButton = byId('ifb-return-stop')
     if (startButton) startButton.addEventListener('click', function () { void start() })
+    if (refreshButton) refreshButton.addEventListener('click', function () { void refreshRecipients() })
     if (stopButton) stopButton.addEventListener('click', function () { void stop('manual') })
     renderStatus()
     renderControls()

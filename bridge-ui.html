@@ -248,6 +248,8 @@ select.input option{background:#1a1a1a;}
 .ifb-return-start:hover:not(:disabled){border-color:var(--blu);color:#d8ecff;}
 .ifb-return-stop{border:1px solid var(--b2);background:var(--s2);color:var(--txt3);}
 .ifb-return-stop:hover:not(:disabled){border-color:var(--red);color:var(--red);}
+.ifb-return-refresh{border:1px solid rgba(61,158,255,.38);background:transparent;color:var(--blu);}
+.ifb-return-refresh:hover:not(:disabled){border-color:var(--blu);background:var(--blu-bg);}
 .ifb-return-actions button:disabled{opacity:.42;cursor:default;}
 .ifb-return-state{margin-top:12px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--txt4);}
 .ifb-return-state.connecting{color:var(--ylw);}.ifb-return-state.active{color:var(--grn);}.ifb-return-state.error{color:var(--red);}
@@ -419,6 +421,8 @@ var _i = {
   ifbReturnStart:   { en: 'START RETURN',    es: 'INICIAR RETORNO' },
   ifbReturnStarting:{ en: 'PREPARING…',      es: 'PREPARANDO…' },
   ifbReturnStop:    { en: 'STOP',            es: 'DETENER' },
+  ifbReturnRefresh: { en: 'REFRESH TALENT',  es: 'ACTUALIZAR TALENTS' },
+  ifbReturnRefreshing:{ en: 'UPDATING…',      es: 'ACTUALIZANDO…' },
   ifbReturnOnAir:   { en: 'ON AIR',          es: 'AL AIRE' },
   ifbReturnOff:     { en: 'OFF',             es: 'APAGADO' },
   ifbReturnReady:   { en: 'READY TO START RETURN', es: 'LISTO PARA INICIAR EL RETORNO' },
@@ -433,6 +437,8 @@ var _i = {
   ifbReturnConnecting:{ en: 'CONNECTING IFB RETURN…', es: 'CONECTANDO RETORNO IFB…' },
   ifbReturnOpeningInput:{ en: 'OPENING CONSOLE INPUT…', es: 'ABRIENDO ENTRADA DE CONSOLA…' },
   ifbReturnActive:{ en: 'PROGRAM-MINUS ACTIVE FOR AUTHORIZED TALENT', es: 'PROGRAM-MINUS ACTIVO PARA TALENT AUTORIZADO' },
+  ifbReturnRecipientsUpdated:{ en: 'AUTHORIZED TALENT UPDATED', es: 'DESTINATARIOS TALENT ACTUALIZADOS' },
+  ifbReturnRecipientsFailed:{ en: 'TALENT NOT UPDATED; RETURN REMAINS ACTIVE', es: 'NO SE ACTUALIZARON LOS DESTINATARIOS; RETORNO ACTIVO' },
   ifbReturnStopped:{ en: 'RETURN STOPPED', es: 'RETORNO DETENIDO' },
   ifbReturnBridgeStopped:{ en: 'RETURN STOPPED WHEN TALLYBRIDGE DISCONNECTED', es: 'RETORNO DETENIDO AL DESCONECTAR TALLYBRIDGE' },
   ifbReturnPermissionDenied:{ en: 'AUDIO INPUT PERMISSION DENIED', es: 'PERMISO DE ENTRADA DENEGADO' },
