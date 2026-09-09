@@ -24,6 +24,7 @@
     captureStream: null,
     captureSource: null,
     captureGain: null,
+    captureLimiter: null,
     captureDestination: null,
     captureTrack: null,
     inputListPending: false,
@@ -104,6 +105,7 @@
       '  </div>',
       '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnNote', 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.')) + '</p>',
       '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnIndependent', 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.')) + '</p>',
+      '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnGain', 'Applies a +12 dB recovery trim with a soft limiter before publishing.')) + '</p>',
       '  <div class="ifb-return-config">',
       '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnRoom', 'SALA TALLYCOMM')) + '</span>',
       '      <input class="input" type="text" id="ifb-return-room" value="' + escapeHtml(config.room) + '" placeholder="SHOW26" autocorrect="off" autocapitalize="off" spellcheck="false">',
@@ -291,6 +293,10 @@
     if (state.captureGain) {
       try { state.captureGain.disconnect() } catch (error) {}
       state.captureGain = null
+    }
+    if (state.captureLimiter) {
+      try { state.captureLimiter.disconnect() } catch (error) {}
+      state.captureLimiter = null
     }
     if (state.captureDestination) {
       try { state.captureDestination.disconnect() } catch (error) {}
@@ -600,9 +606,19 @@
       state.captureSource = state.audioCtx.createMediaStreamSource(state.captureStream)
       state.captureGain = state.audioCtx.createGain()
       state.captureGain.gain.value = 4
+      // Keep the fixed recovery gain from clipping a hot line-level feed. The
+      // limiter is intentionally gentle and lives before the published track;
+      // the Bridge meter therefore shows exactly what Talent receives.
+      state.captureLimiter = state.audioCtx.createDynamicsCompressor()
+      state.captureLimiter.threshold.value = -3
+      state.captureLimiter.knee.value = 6
+      state.captureLimiter.ratio.value = 12
+      state.captureLimiter.attack.value = 0.003
+      state.captureLimiter.release.value = 0.25
       state.captureDestination = state.audioCtx.createMediaStreamDestination()
       state.captureSource.connect(state.captureGain)
-      state.captureGain.connect(state.captureDestination)
+      state.captureGain.connect(state.captureLimiter)
+      state.captureLimiter.connect(state.captureDestination)
       var processedTrack = state.captureDestination.stream.getAudioTracks()[0]
       if (!processedTrack) throw new Error('No processed audio track')
       processedTrack.enabled = true
