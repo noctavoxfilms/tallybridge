@@ -228,13 +228,20 @@ select.input option{background:#1a1a1a;}
    existing monitor visual language and stays physically separate from tally
    mapping so the source cannot be mistaken for a camera control. */
 .ifb-return{margin:0 0 20px;padding:16px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);}
+.optional-module-label{margin:24px 0 8px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--txt4);}
+.ifb-return.optional{border-color:rgba(61,158,255,.32);background:linear-gradient(180deg,rgba(61,158,255,.055),var(--s1) 42%);}
 .ifb-return-head{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;}
 .ifb-return-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--blu);}
 .ifb-return-title{margin-top:3px;font-size:18px;font-weight:800;letter-spacing:.05em;color:var(--txt2);}
+.ifb-return-extra{display:inline-block;margin-left:8px;padding:3px 6px;border:1px solid rgba(61,158,255,.35);border-radius:2px;color:var(--blu);font-family:var(--mono);font-size:8px;letter-spacing:.1em;vertical-align:middle;}
 .ifb-return-chip{flex-shrink:0;padding:5px 8px;border:1px solid var(--b2);border-radius:2px;color:var(--txt4);font-family:var(--mono);font-size:9px;letter-spacing:.09em;}
 .ifb-return-chip.active{border-color:var(--grn);background:var(--grn-bg);color:var(--grn);}
 .ifb-return-chip.error{border-color:var(--red);background:var(--red-bg);color:var(--red);}
 .ifb-return-note{max-width:740px;margin:8px 0 14px;font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--txt3);}
+.ifb-return-config{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr);gap:12px;margin:0 0 14px;padding:14px 0 0;border-top:1px solid var(--b1);}
+.ifb-return-config .field{margin:0;}
+.ifb-return-config .field-hint{display:block;margin-top:5px;font-family:var(--mono);font-size:9px;line-height:1.45;color:var(--txt4);}
+.ifb-return-config .input{width:100%;}
 .ifb-return-controls{display:grid;grid-template-columns:minmax(190px,1fr) minmax(150px,1fr) auto;gap:12px;align-items:end;}
 .ifb-return-controls .field{margin:0;}
 .ifb-return-meter-wrap{padding-bottom:1px;}
@@ -280,6 +287,7 @@ select.input option{background:#1a1a1a;}
   .layout{flex-direction:column;}
   .sidebar{width:100%;border-left:none;border-top:1px solid var(--b1);height:220px;}
   .tally-monitor{grid-template-columns:1fr 1fr;}
+  .ifb-return-config{grid-template-columns:1fr;gap:10px;}
   .ifb-return-controls{grid-template-columns:1fr;}
 }
 </style>
@@ -415,7 +423,15 @@ var _i = {
   selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
   connectedTo:      { en: 'CONNECTED TO',    es: 'CONECTADO A' },
   ifbReturnTitle:   { en: 'TALENT RETURN',   es: 'RETORNO PARA TALENT' },
+  ifbReturnOptional:{ en: 'OPTIONAL EXTRA',  es: 'OPCIONAL' },
   ifbReturnNote:    { en: 'Publishes the selected Program-Minus mix only to authorized talent. It does not open camera or crew intercom.', es: 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.' },
+  ifbReturnIndependent:{ en: 'This is independent from switcher tally. Configure it here and start it even when no switcher is connected.', es: 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.' },
+  ifbReturnRoom:    { en: 'TALLYCOMM ROOM',  es: 'SALA TALLYCOMM' },
+  ifbReturnRoomHint: { en: 'Event code with Talent members', es: 'Código del evento con miembros Talent' },
+  ifbReturnApiKey:  { en: 'EVENT API KEY',   es: 'API KEY DEL EVENTO' },
+  ifbReturnApiKeyHint:{ en: 'From the event dashboard · SWITCHER API KEY', es: 'Desde el dashboard del evento · SWITCHER API KEY' },
+  ifbReturnNeedRoom:{ en: 'Enter the TallyComm room for the IFB return', es: 'Ingresá la sala de TallyComm para el retorno IFB' },
+  ifbReturnNeedApiKey:{ en: 'Enter the event API key for the IFB return', es: 'Ingresá la API key del evento para el retorno IFB' },
   ifbReturnInput:   { en: 'CONSOLE INPUT',   es: 'ENTRADA DE CONSOLA' },
   ifbReturnLevel:   { en: 'INPUT LEVEL',     es: 'NIVEL DE ENTRADA' },
   ifbReturnStart:   { en: 'START RETURN',    es: 'INICIAR RETORNO' },
@@ -633,9 +649,42 @@ const ui = {
   // behind your back.
   selectedSwitcher: null,
   lastSession: null,   // { switcher, host, room } from the saved config
+  // IFB has its own credentials and can run without the tally connection.
+  savedIfbRoom: '',
+  savedIfbApiKey: '',
   probe: null,         // resultado de la última prueba de conexión
   probeOk: false,
   history: {}          // switcher → addresses that connected before
+}
+
+// The IFB module is intentionally usable before the switcher flow reaches its
+// own connected state. Expose only the small configuration bridge it needs;
+// values remain local to this TallyBridge renderer and are persisted by the
+// local /api/ifb/config endpoint, never sent anywhere except on start.
+window.getTallyBridgeIfbConfig = function () {
+  return {
+    room: ui.savedIfbRoom || ui.savedRoom || '',
+    apiKey: ui.savedIfbApiKey || ui.savedApiKey || ''
+  }
+}
+
+window.updateTallyBridgeIfbConfig = function (config) {
+  const cfg = config || {}
+  ui.savedIfbRoom = String(cfg.room || '').trim()
+  ui.savedIfbApiKey = String(cfg.apiKey || '').trim()
+}
+
+window.persistTallyBridgeIfbConfig = function (config) {
+  const cfg = config || {}
+  ui.savedIfbRoom = String(cfg.room || '').trim()
+  ui.savedIfbApiKey = String(cfg.apiKey || '').trim()
+  return fetch('/api/ifb/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ room: ui.savedIfbRoom, apiKey: ui.savedIfbApiKey })
+  }).then(function (response) {
+    return response.json().catch(function () { return {} })
+  }).catch(function () { return { ok: false } })
 }
 
 // ── SSE ────────────────────────────────────────────────────────
@@ -686,6 +735,10 @@ function onStatus(d) {
     if (d.config.tallyUrl)    ui.savedUrl         = d.config.tallyUrl
     if (d.config.tallyRoom)   ui.savedRoom        = d.config.tallyRoom
     if (d.config.tallyApiKey) ui.savedApiKey      = d.config.tallyApiKey
+    if (Object.prototype.hasOwnProperty.call(d.config, 'ifbRoom'))
+      ui.savedIfbRoom = d.config.ifbRoom || ''
+    if (Object.prototype.hasOwnProperty.call(d.config, 'ifbApiKey'))
+      ui.savedIfbApiKey = d.config.ifbApiKey || ''
     // Deliberately NOT setting ui.selectedSwitcher from the saved config —
     // the switcher is offered through the "last session" card, not preselected.
     if (d.config.switcher && d.config.tallyRoom) {
@@ -719,10 +772,7 @@ function onStatus(d) {
   dot.style.boxShadow   = d.connected ? '0 0 8px var(--grn)' : d.connecting ? '0 0 8px var(--ylw)' : '0 0 8px var(--red)'
 
   if (d.connected) renderConnected()
-  else {
-    if (window.TallyBridgeIfbReturn) void window.TallyBridgeIfbReturn.stop('bridge-disconnected')
-    renderConnect(d.error)
-  }
+  else renderConnect(d.error)
   if (d.error && !d.connecting) addLog({ msg: d.error, type: 'error', ts: Date.now() })
 }
 
@@ -840,11 +890,19 @@ function renderConnect(error) {
         </div>
       </div>
 
+      <div class="optional-module-label">${t('ifbReturnOptional')}</div>
+      <div id="ifb-return-slot"></div>
+
       ${error ? `<div class="error-msg">⚠ ${escHtml(error)}</div>` : ''}
       <button class="connect-btn" id="connect-btn" onclick="doConnect()"${stage >= 4 ? '' : ' disabled'}>${t('connectBtn')}</button>
       <div class="go-hint" id="go-hint">${stage >= 4 ? '' :
         stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')}</div>
     </div>`
+
+  // The IFB return is an optional module, so it must be mounted on the
+  // initial connect screen too. It does not wait for a switcher probe or a
+  // successful tally connection.
+  if (window.TallyBridgeIfbReturn) window.TallyBridgeIfbReturn.mount()
 }
 
 // Only the pieces that depend on what has been filled in — re-rendering the
@@ -1357,7 +1415,8 @@ async function doConnect() {
 }
 
 async function doDisconnect() {
-  if (window.TallyBridgeIfbReturn) await window.TallyBridgeIfbReturn.stop('manual')
+  // Tally and IFB are separate modules. Disconnecting the switcher must not
+  // interrupt an already-running Program-Minus return for talent.
   await fetch('/api/disconnect', { method: 'POST' })
 }
 
@@ -1439,6 +1498,11 @@ renderConnect(null)
 </script>
 <script src="/vendor/livekit-client/livekit-client.umd.js"></script>
 <script src="/ifb-return.js"></script>
+<script>
+  // renderConnect() runs before the external module is loaded on first paint;
+  // mount once more now so the optional IFB card is visible immediately.
+  if (window.TallyBridgeIfbReturn) window.TallyBridgeIfbReturn.mount()
+</script>
 <script src="/spike/ifb-capture-spike.js"></script>
 </body>
 </html>

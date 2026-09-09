@@ -36,6 +36,36 @@
 
   function byId(id) { return document.getElementById(id) }
 
+  function currentConfig() {
+    var source = typeof window.getTallyBridgeIfbConfig === 'function'
+      ? (window.getTallyBridgeIfbConfig() || {})
+      : {}
+    var roomEl = byId('ifb-return-room')
+    var apiKeyEl = byId('ifb-return-api-key')
+    return {
+      room: String(roomEl ? roomEl.value : (source.room || '')).trim(),
+      apiKey: String(apiKeyEl ? apiKeyEl.value : (source.apiKey || '')).trim()
+    }
+  }
+
+  function configReady(config) {
+    return !!(config && config.room && config.apiKey)
+  }
+
+  function rememberConfig(config) {
+    if (typeof window.updateTallyBridgeIfbConfig === 'function') {
+      window.updateTallyBridgeIfbConfig(config)
+    }
+  }
+
+  function persistConfig(config) {
+    rememberConfig(config)
+    if (typeof window.persistTallyBridgeIfbConfig === 'function') {
+      return window.persistTallyBridgeIfbConfig(config)
+    }
+    return Promise.resolve({ ok: false })
+  }
+
   function statusText() {
     if (state.statusText) return state.statusText
     return tr('ifbReturnReady', 'LISTO PARA INICIAR EL RETORNO')
@@ -49,17 +79,29 @@
 
   function cardHtml() {
     var active = state.running
+    var config = currentConfig()
     return [
-      '<section class="ifb-return" aria-labelledby="ifb-return-title">',
+      '<section class="ifb-return optional" id="ifb-return-card" aria-labelledby="ifb-return-title">',
       '  <div class="ifb-return-head">',
       '    <div>',
-      '      <div class="ifb-return-kicker">IFB RETURN · PROGRAM-MINUS</div>',
+      '      <div class="ifb-return-kicker">IFB RETURN · PROGRAM-MINUS <span class="ifb-return-extra">' + escapeHtml(tr('ifbReturnOptional', 'OPCIONAL')) + '</span></div>',
       '      <div class="ifb-return-title" id="ifb-return-title">' + escapeHtml(tr('ifbReturnTitle', 'RETORNO PARA TALENT')) + '</div>',
       '    </div>',
       '    <div class="ifb-return-chip ' + (active ? 'active' : state.status === 'error' ? 'error' : '') + '" id="ifb-return-chip">' +
             (active ? escapeHtml(tr('ifbReturnOnAir', 'AL AIRE')) : escapeHtml(tr('ifbReturnOff', 'APAGADO'))) + '</div>',
       '  </div>',
       '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnNote', 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.')) + '</p>',
+      '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnIndependent', 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.')) + '</p>',
+      '  <div class="ifb-return-config">',
+      '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnRoom', 'SALA TALLYCOMM')) + '</span>',
+      '      <input class="input" type="text" id="ifb-return-room" value="' + escapeHtml(config.room) + '" placeholder="SHOW26" autocorrect="off" autocapitalize="off" spellcheck="false">',
+      '      <span class="field-hint">' + escapeHtml(tr('ifbReturnRoomHint', 'Código del evento con miembros Talent')) + '</span>',
+      '    </label>',
+      '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnApiKey', 'API KEY DEL EVENTO')) + '</span>',
+      '      <input class="input" type="password" id="ifb-return-api-key" value="' + escapeHtml(config.apiKey) + '" placeholder="Desde el dashboard del evento" autocorrect="off" autocapitalize="off" spellcheck="false">',
+      '      <span class="field-hint">' + escapeHtml(tr('ifbReturnApiKeyHint', 'Desde el dashboard del evento · SWITCHER API KEY')) + '</span>',
+      '    </label>',
+      '  </div>',
       '  <div class="ifb-return-controls">',
       '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnInput', 'ENTRADA DE CONSOLA')) + '</span>',
       '      <select class="input" id="ifb-return-device" ' + (active || state.starting ? 'disabled' : '') + '>' +
@@ -95,12 +137,13 @@
   }
 
   function renderControls() {
+    var config = currentConfig()
     var start = byId('ifb-return-start')
     var refresh = byId('ifb-return-refresh')
     var stop = byId('ifb-return-stop')
     var input = byId('ifb-return-device')
     if (start) {
-      start.disabled = state.running || state.starting || !input || !input.value
+      start.disabled = state.running || state.starting || !input || !input.value || !configReady(config)
       start.textContent = state.starting ? tr('ifbReturnStarting', 'PREPARANDO…') : tr('ifbReturnStart', 'INICIAR RETORNO')
     }
     if (stop) stop.disabled = !state.running
@@ -228,7 +271,12 @@
   }
 
   async function requestAuthorization(allowEmptyRecipients) {
-    var response = await fetch('/api/ifb/token', { method: 'POST' })
+    var config = currentConfig()
+    var response = await fetch('/api/ifb/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room: config.room, apiKey: config.apiKey })
+    })
     var data = await response.json().catch(function () { return { error: tr('ifbReturnTokenInvalid', 'RESPUESTA IFB INVÁLIDA') } })
     if (!response.ok) throw new Error(data.error || tr('ifbReturnTokenFailed', 'NO SE PUDO AUTORIZAR EL RETORNO'))
     if (!authIsValid(data, !!allowEmptyRecipients)) throw new Error(tr('ifbReturnTokenInvalid', 'RESPUESTA IFB INVÁLIDA'))
@@ -338,6 +386,25 @@
       renderControls()
       return
     }
+    var config = currentConfig()
+    if (!config.room) {
+      state.status = 'error'
+      state.statusText = tr('ifbReturnNeedRoom', 'INGRESÁ LA SALA DE TALLYCOMM')
+      renderStatus()
+      renderControls()
+      return
+    }
+    if (!config.apiKey) {
+      state.status = 'error'
+      state.statusText = tr('ifbReturnNeedApiKey', 'INGRESÁ LA API KEY DEL EVENTO')
+      renderStatus()
+      renderControls()
+      return
+    }
+    // Save the independent IFB credentials without coupling them to the
+    // switcher connection. Failure to persist does not block a live start;
+    // the current values are still sent to the local proxy below.
+    void persistConfig(config)
     if (!window.LivekitClient || !window.LivekitClient.Room || !window.LivekitClient.createLocalAudioTrack) {
       state.status = 'error'
       state.statusText = tr('ifbReturnSdkMissing', 'EL MÓDULO DE RETORNO NO ESTÁ DISPONIBLE')
@@ -417,7 +484,28 @@
   function mount() {
     var slot = byId('ifb-return-slot')
     if (!slot) return
-    slot.innerHTML = cardHtml()
+    // Status events arrive while a show is running. Keep the existing card so
+    // operator focus, typed credentials, and the selected input are not wiped
+    // out on every tally update; render only when the host screen created a
+    // fresh slot.
+    if (!byId('ifb-return-card')) slot.innerHTML = cardHtml()
+    if (byId('ifb-return-card') && byId('ifb-return-room') && byId('ifb-return-room').dataset.ifbWired === '1') {
+      renderStatus()
+      renderControls()
+      return
+    }
+    ;['ifb-return-room', 'ifb-return-api-key'].forEach(function (id) {
+      var field = byId(id)
+      if (!field) return
+      field.dataset.ifbWired = '1'
+      field.addEventListener('input', function () {
+        rememberConfig(currentConfig())
+        renderControls()
+      })
+      field.addEventListener('change', function () {
+        void persistConfig(currentConfig())
+      })
+    })
     var input = byId('ifb-return-device')
     if (input) input.addEventListener('change', function () {
       state.deviceId = input.value

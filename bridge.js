@@ -66,7 +66,13 @@ function loadSaved() {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
     if (fs.existsSync(SAVE_FILE)) {
       const d = JSON.parse(fs.readFileSync(SAVE_FILE, 'utf8'))
-      if (d.config)  Object.assign(state.config, d.config)
+      if (d.config) {
+        Object.assign(state.config, d.config)
+        // Older previews briefly stored an IFB-specific URL. Drop it during
+        // migration so the optional module cannot retain or expose a second
+        // arbitrary API-key destination.
+        delete state.config.ifbUrl
+      }
       if (d.mapping) Object.assign(state.mapping, d.mapping)
       if (d.history) Object.assign(state.history, d.history)
       console.log('[INFO] Config cargada desde disco')
@@ -122,7 +128,12 @@ const state = {
     avmatrixInputs: 4,
     tallyUrl:      'https://tallycomm.com',
     tallyRoom:     '',
-    tallyApiKey:   ''
+    tallyApiKey:   '',
+    // IFB is an optional return source. Keep its credentials separate from
+    // the switcher connection so the operator can publish Program-Minus even
+    // when no tally hardware/software is connected to this computer.
+    ifbRoom:       '',
+    ifbApiKey:     ''
   },
   mapping: {}
 }
@@ -2061,17 +2072,37 @@ app.post('/api/mapping', (req, res) => {
   res.json({ ok: true, mapping: state.mapping })
 })
 
+// Save the optional IFB credentials independently from the switcher config.
+// The IFB always uses the TallyComm server already configured for this Bridge;
+// there is intentionally no second, user-supplied destination here. This
+// keeps the extra module independent without creating a new API-key egress.
+app.post('/api/ifb/config', (req, res) => {
+  const input = req.body || {}
+  const room = String(input.room || input.ifbRoom || '').trim().slice(0, 64)
+  const apiKey = String(input.apiKey || input.ifbApiKey || '').trim()
+  if (!_isByteStringSafe(apiKey)) return res.status(400).json({ error: 'API Key inválida' })
+  state.config.ifbRoom = room
+  state.config.ifbApiKey = apiKey
+  saveToDisk()
+  sse('status', statusPayload())
+  res.json({ ok: true })
+})
+
 // Mint a short-lived, event-scoped return-source token through TallyComm.
 // The renderer never calls the cloud endpoint directly: this local proxy keeps
-// the existing Bridge authentication model (room + switcher API key) and
-// avoids a browser CORS exception during a show.
+// the existing Bridge authentication model and avoids a browser CORS exception
+// during a show. Body values are deliberately accepted so IFB can run without
+// the switcher connection having been configured or saved first. The upstream
+// URL is never taken from this request: it is the same server destination that
+// the Bridge already uses for ordinary tally traffic.
 app.post('/api/ifb/token', async (req, res) => {
-  const room = String(state.config.tallyRoom || '').trim()
-  const apiKey = String(state.config.tallyApiKey || '').trim()
-  const baseUrl = String(state.config.tallyUrl || '').replace(/\/$/, '')
+  const input = req.body || {}
+  const room = String(input.room || state.config.ifbRoom || state.config.tallyRoom || '').trim()
+  const apiKey = String(input.apiKey || state.config.ifbApiKey || state.config.tallyApiKey || '').trim()
+  const baseUrl = String(state.config.tallyUrl || 'https://tallycomm.com').trim().replace(/\/$/, '')
   if (!room) return res.status(400).json({ error: 'Configurá la sala antes de iniciar el retorno IFB' })
   if (!apiKey) return res.status(400).json({ error: 'Configurá la API Key del evento antes de iniciar el retorno IFB' })
-  if (!baseUrl) return res.status(400).json({ error: 'Configurá la URL de TallyComm antes de iniciar el retorno IFB' })
+  if (!/^https?:\/\//i.test(baseUrl)) return res.status(400).json({ error: 'Configurá una URL válida de TallyComm antes de iniciar el retorno IFB' })
   if (!_isByteStringSafe(apiKey)) return res.status(400).json({ error: 'API Key inválida' })
 
   const timeout = new AbortController()
