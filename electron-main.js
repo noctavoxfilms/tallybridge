@@ -1,6 +1,6 @@
 'use strict'
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, screen } = require('electron')
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, dialog, screen, systemPreferences } = require('electron')
 const path   = require('path')
 const fs     = require('fs')
 const http   = require('http')
@@ -21,6 +21,23 @@ let tray       = null
 let serverReady = false
 
 let bridgeModule = null   // expone shutdownTally() para apagar el tally al salir
+
+// macOS keeps the input-device list behind its microphone TCC grant. Ask for
+// that grant before creating the renderer so enumerateDevices() can populate
+// the optional IFB selector on the very first launch. Existing grants are
+// reused silently; a denied grant is reported in the renderer when the
+// operator retries the input scan.
+async function ensureMicrophoneAccess() {
+  if (process.platform !== 'darwin' || !systemPreferences || !systemPreferences.getMediaAccessStatus) return
+  try {
+    const status = systemPreferences.getMediaAccessStatus('microphone')
+    if (status === 'not-determined' && systemPreferences.askForMediaAccess) {
+      await systemPreferences.askForMediaAccess('microphone')
+    }
+  } catch (e) {
+    // The renderer still handles permission/device errors and exposes retry.
+  }
+}
 
 // ── Start bridge server ──────────────────────────────────────
 function startServer() {
@@ -199,8 +216,9 @@ function createWindow() {
     return !details || !details.mediaType || details.mediaType === 'audio'
   })
   session.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    const audioOnly = details && Array.isArray(details.mediaTypes) &&
-      details.mediaTypes.includes('audio') && !details.mediaTypes.includes('video')
+    const hasMediaTypes = details && Array.isArray(details.mediaTypes)
+    const audioOnly = !hasMediaTypes ||
+      (details.mediaTypes.includes('audio') && !details.mediaTypes.includes('video'))
     callback(permission === 'media' && isLocalBridgeOrigin(webContents.getURL()) && audioOnly)
   })
 
@@ -324,6 +342,7 @@ app.whenReady().then(async () => {
 
   try {
     await startServer()
+    await ensureMicrophoneAccess()
     loadWin.close()
     createTray()
     createWindow()

@@ -19,6 +19,8 @@
     meterSink: null,
     meterFrame: 0,
     inputListPending: false,
+    inputAccessAttempted: false,
+    inputAccessError: null,
     running: false,
     starting: false,
     refreshing: false,
@@ -109,6 +111,7 @@
       '      <select class="input" id="ifb-return-device" ' + (active || state.starting ? 'disabled' : '') + '>' +
                 (active ? '<option value="' + escapeHtml(state.deviceId) + '">' + escapeHtml(state.deviceLabel || tr('ifbReturnSelectedInput', 'Entrada seleccionada')) + '</option>' : '') +
               '</select>',
+      '      <button class="ifb-return-input-refresh" id="ifb-return-input-refresh" type="button" ' + (active || state.starting ? 'disabled' : '') + '>' + escapeHtml(tr('ifbReturnRefreshInputs', 'ACTUALIZAR ENTRADAS')) + '</button>',
       '    </label>',
       '    <div class="ifb-return-meter-wrap">',
       '      <div class="ifb-return-meter" aria-label="' + escapeHtml(tr('ifbReturnLevel', 'Nivel de entrada')) + '"><div class="ifb-return-meter-fill" id="ifb-return-meter-fill"></div></div>',
@@ -144,6 +147,7 @@
     var refresh = byId('ifb-return-refresh')
     var stop = byId('ifb-return-stop')
     var input = byId('ifb-return-device')
+    var inputRefresh = byId('ifb-return-input-refresh')
     if (start) {
       start.disabled = state.running || state.starting || !input || !input.value || !configReady(config)
       start.textContent = state.starting ? tr('ifbReturnStarting', 'PREPARANDO…') : tr('ifbReturnStart', 'INICIAR RETORNO')
@@ -154,9 +158,23 @@
       refresh.textContent = state.refreshing ? tr('ifbReturnRefreshing', 'ACTUALIZANDO…') : tr('ifbReturnRefresh', 'ACTUALIZAR TALENTS')
     }
     if (input) input.disabled = state.running || state.starting
+    if (inputRefresh) inputRefresh.disabled = state.running || state.starting || state.inputListPending
   }
 
-  async function listInputs() {
+  async function requestInputAccess() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      var unsupported = new Error(tr('ifbReturnUnsupported', 'ESTA VERSIÓN NO ADMITE ENTRADAS DE AUDIO'))
+      unsupported.name = 'NotSupportedError'
+      throw unsupported
+    }
+    // Electron does not expose the audio-device list until the renderer has
+    // received a microphone grant. Open a short, silent probe stream only to
+    // obtain that grant; the real selected input is opened later by Start.
+    var probe = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+    probe.getTracks().forEach(function (track) { try { track.stop() } catch (error) {} })
+  }
+
+  async function listInputs(forceAccess) {
     var select = byId('ifb-return-device')
     if (!select || state.running || state.starting || state.inputListPending) return
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
@@ -168,9 +186,34 @@
     }
 
     state.inputListPending = true
+    state.inputAccessError = null
     try {
       var devices = await navigator.mediaDevices.enumerateDevices()
       var inputs = devices.filter(function (device) { return device.kind === 'audioinput' })
+      // On a fresh Electron install enumerateDevices() commonly returns an
+      // empty list until getUserMedia() has been granted once. Request that
+      // narrow audio-only permission and enumerate again, without keeping the
+      // probe stream open or transmitting anything.
+      if (!inputs.length && (forceAccess || !state.inputAccessAttempted)) {
+        state.inputAccessAttempted = true
+        state.status = 'connecting'
+        state.statusText = tr('ifbReturnRequestingInput', 'SOLICITANDO ACCESO A ENTRADAS…')
+        renderStatus()
+        renderControls()
+        try {
+          await requestInputAccess()
+          devices = await navigator.mediaDevices.enumerateDevices()
+          inputs = devices.filter(function (device) { return device.kind === 'audioinput' })
+        } catch (error) {
+          state.inputAccessError = error
+        }
+      }
+      // The host may rebuild the optional card while this async scan is
+      // waiting for macOS permission or enumerateDevices(). Always resolve the
+      // current select before painting so a stale detached card cannot swallow
+      // the result and leave the visible selector empty.
+      select = byId('ifb-return-device')
+      if (!select || state.running || state.starting) return
       select.innerHTML = ''
       if (!inputs.length) {
         var none = document.createElement('option')
@@ -178,8 +221,11 @@
         none.textContent = tr('ifbReturnNoInput', 'No hay entradas de audio disponibles')
         select.appendChild(none)
         state.status = 'error'
-        state.statusText = tr('ifbReturnNoInputState', 'SIN ENTRADA DE AUDIO')
+        state.statusText = state.inputAccessError
+          ? messageFor(state.inputAccessError)
+          : tr('ifbReturnNoInputState', 'SIN ENTRADA DE AUDIO')
       } else {
+        state.inputAccessError = null
         inputs.forEach(function (device, index) {
           var option = document.createElement('option')
           option.value = device.deviceId
@@ -572,9 +618,14 @@
     var startButton = byId('ifb-return-start')
     var refreshButton = byId('ifb-return-refresh')
     var stopButton = byId('ifb-return-stop')
+    var inputRefreshButton = byId('ifb-return-input-refresh')
     if (startButton) startButton.addEventListener('click', function () { void start() })
     if (refreshButton) refreshButton.addEventListener('click', function () { void refreshRecipients() })
     if (stopButton) stopButton.addEventListener('click', function () { void stop('manual') })
+    if (inputRefreshButton) inputRefreshButton.addEventListener('click', function () {
+      state.inputAccessAttempted = false
+      void listInputs(true)
+    })
     renderStatus()
     renderControls()
     if (!state.running && !state.starting) void listInputs()

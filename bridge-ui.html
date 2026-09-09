@@ -244,6 +244,9 @@ select.input option{background:#1a1a1a;}
 .ifb-return-config .input{width:100%;}
 .ifb-return-controls{display:grid;grid-template-columns:minmax(190px,1fr) minmax(150px,1fr) auto;gap:12px;align-items:end;}
 .ifb-return-controls .field{margin:0;}
+.ifb-return-input-refresh{display:block;margin-top:6px;padding:0;border:0;background:transparent;color:var(--txt4);font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-align:left;cursor:pointer;}
+.ifb-return-input-refresh:hover:not(:disabled){color:var(--blu);}
+.ifb-return-input-refresh:disabled{opacity:.42;cursor:default;}
 .ifb-return-meter-wrap{padding-bottom:1px;}
 .ifb-return-meter{height:8px;overflow:hidden;background:var(--bg);border:1px solid var(--b1);border-radius:999px;}
 .ifb-return-meter-fill{height:100%;width:0;background:linear-gradient(90deg,var(--grn),var(--ylw));transition:width .08s linear;}
@@ -444,6 +447,8 @@ var _i = {
   ifbReturnReady:   { en: 'READY TO START RETURN', es: 'LISTO PARA INICIAR EL RETORNO' },
   ifbReturnNoInput: { en: 'No audio inputs available', es: 'No hay entradas de audio disponibles' },
   ifbReturnNoInputState:{ en: 'NO AUDIO INPUT', es: 'SIN ENTRADA DE AUDIO' },
+  ifbReturnRequestingInput:{ en: 'REQUESTING AUDIO INPUT ACCESS…', es: 'SOLICITANDO ACCESO A ENTRADAS…' },
+  ifbReturnRefreshInputs:{ en: 'REFRESH INPUTS', es: 'ACTUALIZAR ENTRADAS' },
   ifbReturnInputNumber:{ en: 'Audio input {n}', es: 'Entrada de audio {n}' },
   ifbReturnSelectedInput:{ en: 'Selected audio input', es: 'Entrada de audio seleccionada' },
   ifbReturnUnsupported:{ en: 'THIS VERSION DOES NOT SUPPORT AUDIO INPUTS', es: 'ESTA VERSIÓN NO ADMITE ENTRADAS DE AUDIO' },

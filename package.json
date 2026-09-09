@@ -31,6 +31,7 @@
       "bridge.js",
       "bridge-ui.html",
       "ifb-return.js",
+      "spike/ifb-capture-spike.js",
       "assets/brand/*.png",
       "node_modules/**",
       "!node_modules/electron-builder/**",
