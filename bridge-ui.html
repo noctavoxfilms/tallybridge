@@ -44,9 +44,21 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .status-dot{width:5px;height:5px;border-radius:50%;background:currentColor;}
 
 /* LAYOUT */
-.layout{display:flex;height:calc(100vh - 52px);}
-.main{flex:1;overflow-y:auto;padding:0;}
-.sidebar{width:300px;flex-shrink:0;border-left:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;}
+.layout{display:flex;flex-direction:column;height:calc(100vh - 52px);}
+.main{flex:1;min-height:0;overflow:hidden;padding:0;}
+.sidebar{height:42px;flex-shrink:0;border-top:1px solid var(--b1);display:flex;flex-direction:column;overflow:hidden;background:var(--s1);}
+.sidebar.open{position:fixed;z-index:220;right:16px;bottom:16px;width:min(480px,calc(100vw - 32px));height:min(420px,calc(100vh - 84px));border:1px solid var(--b2);box-shadow:0 16px 48px rgba(0,0,0,.48);}
+.sidebar.open .log-scroll{display:block;}.sidebar:not(.open) .log-scroll{display:none;}
+
+/* Signal Console: two simultaneous operational paths that share one event. */
+.signal-console{height:100%;padding:14px;display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;}
+.event-rail{display:grid;grid-template-columns:auto minmax(150px,1fr) minmax(180px,1fr) auto;gap:10px;align-items:end;padding:10px 12px;background:var(--s1);border:1px solid var(--b1);border-left:3px solid var(--blu);}
+.event-rail-title{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--blu);padding-bottom:10px;white-space:nowrap;}.event-rail .field{margin:0;}.event-rail .field-hint{display:none;}
+.signal-grid{display:grid;grid-template-columns:minmax(0,1.16fr) minmax(320px,.84fr);gap:12px;min-height:0;}
+.signal-pane{min-height:0;overflow:auto;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);padding:13px;}
+.signal-pane.ifb-pane{border-color:rgba(61,158,255,.38);background:linear-gradient(180deg,rgba(61,158,255,.055),var(--s1) 34%);}
+.signal-pane-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid var(--b1);font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--txt3);}.signal-pane-head strong{font-size:12px;color:var(--txt);font-weight:400;}.signal-pane-head .path-chip{padding:3px 6px;border:1px solid var(--b2);color:var(--txt4);font-size:8px;white-space:nowrap;}.ifb-pane .path-chip{border-color:rgba(61,158,255,.35);color:var(--blu);}
+.tally-setup{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(260px,1.1fr);gap:12px;align-items:start;}.tally-setup .form-card{margin:0;}.tally-setup .switch-row{margin:0;grid-template-columns:repeat(4,minmax(0,1fr));}.tally-setup .switch-opt{min-height:78px;padding:9px 6px;}.tally-setup .switch-opt-icon{font-size:22px;}.tally-setup .switch-opt-name{font-size:13px;}.tally-setup .switch-opt-badge{font-size:7px;}
 
 /* CONNECT FORM */
 .connect-wrap{max-width:1040px;margin:22px auto;padding:0 22px 40px;}
@@ -238,6 +250,8 @@ select.input option{background:#1a1a1a;}
 .ifb-return-chip.active{border-color:var(--grn);background:var(--grn-bg);color:var(--grn);}
 .ifb-return-chip.error{border-color:var(--red);background:var(--red-bg);color:var(--red);}
 .ifb-return-note{max-width:740px;margin:8px 0 14px;font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--txt3);}
+.ifb-cue-line{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;margin:0 0 14px;padding:8px 10px;border:1px solid rgba(61,158,255,.28);background:rgba(61,158,255,.05);font-family:var(--mono);font-size:9px;letter-spacing:.07em;color:var(--txt4);}
+.ifb-cue-line strong{min-width:0;color:var(--blu);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ifb-cue-line small{font-size:8px;color:var(--txt4);letter-spacing:0;}
 .ifb-return-config{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr);gap:12px;margin:0 0 14px;padding:14px 0 0;border-top:1px solid var(--b1);}
 .ifb-return-config .field{margin:0;}
 .ifb-return-config .field-hint{display:block;margin-top:5px;font-family:var(--mono);font-size:9px;line-height:1.45;color:var(--txt4);}
@@ -321,6 +335,7 @@ select.input option{background:#1a1a1a;}
   <div class="main" id="main-area"></div>
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
+      <button class="clear-log" onclick="toggleLogDrawer()" id="log-toggle-btn">LOG</button>
       <span id="log-title">ACTIVITY LOG</span>
       <button class="clear-log" onclick="clearLog()" id="log-clear-btn">CLEAR</button>
     </div>
@@ -839,70 +854,33 @@ function renderConnect(error) {
     : renderOBSFields()
 
   ma.innerHTML = `
-    <div class="connect-wrap">
-      ${renderLastSession()}
-
-      ${stepHtml(1, t('step1'), s1)}
-      <div class="switch-row">
-        ${SWITCHER_LIST.map(([k, n, sub, tag]) => `
-          <div class="switch-opt ${sw === k ? 'active' : ''}" onclick="selectSwitcher('${k}')">
-            ${tag ? `<span class="sw-tag">${tag}</span>` : ''}
-            <span class="switch-opt-icon">${brandIcon(k)}</span>
-            <div class="switch-opt-name">${n}</div>
-            <div class="switch-opt-badge">${sw === k ? t('selected') : sub}</div>
-          </div>`).join('')}
-      </div>
-
-      <div class="cols2">
-        <div>
-          ${stepHtml(2, t('step2'), s2)}
-          <div class="blk ${stage < 2 ? 'locked' : ''}">
-            <div class="form-card ${stage >= 3 ? 'ok' : stage === 2 ? 'now' : ''}" id="switcher-fields">
-              ${fields}
-              <div id="probe-result">${renderProbeResult()}</div>
-            </div>
+    <div class="signal-console">
+      <section class="event-rail" aria-label="Evento TallyComm">
+        <div class="event-rail-title">EVENTO TALLYCOMM</div>
+        <label class="field"><span class="field-label">${t('roomName')}</span>
+          <input class="input" type="text" id="tallyRoom" oninput="refreshConnectState()" value="${escHtml(ui.savedRoom || '')}" placeholder="${t('roomPlaceholder')}" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
+        <label class="field"><span class="field-label">${t('apiKey')}</span>
+          <input class="input" type="password" id="tallyApiKey" oninput="refreshConnectState()" value="${escHtml(ui.savedApiKey || '')}" placeholder="${t('apiKeyPlaceholder')}" autocorrect="off" autocapitalize="off" spellcheck="false"></label>
+        <details class="advanced-section"><summary>▸ ${t('advancedSettings')}</summary><div class="field" style="margin-top:8px"><span class="field-label">${t('serverUrl')}</span><input class="input" type="text" id="tallyUrl" value="${escHtml(ui.savedUrl || 'https://tallycomm.com')}" placeholder="https://tallycomm.com"></div></details>
+      </section>
+      <div class="signal-grid">
+        <section class="signal-pane tally-pane">
+          <div class="signal-pane-head"><strong>TALLY</strong><span class="path-chip">${stage >= 4 ? 'LISTO PARA CONECTAR' : 'CONFIGURACIÓN'}</span></div>
+          ${renderLastSession()}
+          <div class="tally-setup">
+            <div><div class="form-section-label">${t('step1')}</div><div class="switch-row">${SWITCHER_LIST.map(([k, n, sub, tag]) => `
+              <div class="switch-opt ${sw === k ? 'active' : ''}" onclick="selectSwitcher('${k}')">${tag ? `<span class="sw-tag">${tag}</span>` : ''}<span class="switch-opt-icon">${brandIcon(k)}</span><div class="switch-opt-name">${n}</div><div class="switch-opt-badge">${sw === k ? t('selected') : sub}</div></div>`).join('')}</div></div>
+            <div class="form-card ${stage >= 3 ? 'ok' : stage === 2 ? 'now' : ''}" id="switcher-fields">${fields}<div id="probe-result">${renderProbeResult()}</div></div>
           </div>
-        </div>
-        <div>
-          ${stepHtml(3, t('step3'), s3)}
-          <div class="blk ${stage < 3 ? 'locked' : ''}">
-            <div class="form-card ${stage >= 4 ? 'ok' : stage === 3 ? 'now' : ''}">
-              <div class="form-section-label">TALLYCOMM</div>
-              <div class="field">
-                <span class="field-label">${t('roomName')}</span>
-                <input class="input" type="text" id="tallyRoom" oninput="refreshConnectState()"
-                  value="${escHtml(ui.savedRoom || '')}" placeholder="${t('roomPlaceholder')}"
-                  autocorrect="off" autocapitalize="off" spellcheck="false">
-                <span class="field-hint">${t('roomHint')}</span>
-              </div>
-              <div class="field">
-                <span class="field-label">${t('apiKey')}</span>
-                <input class="input" type="password" id="tallyApiKey" oninput="refreshConnectState()"
-                  value="${escHtml(ui.savedApiKey || '')}" placeholder="${t('apiKeyPlaceholder')}"
-                  autocorrect="off" autocapitalize="off" spellcheck="false">
-                <span class="field-hint">${t('apiKeyHint')}</span>
-              </div>
-              <details class="advanced-section">
-                <summary>▸ ${t('advancedSettings')}</summary>
-                <div class="field" style="margin-top:8px">
-                  <span class="field-label">${t('serverUrl')}</span>
-                  <input class="input" type="text" id="tallyUrl"
-                    value="${escHtml(ui.savedUrl || 'https://tallycomm.com')}" placeholder="https://tallycomm.com">
-                  <span class="field-hint">${t('serverUrlHint')}</span>
-                </div>
-              </details>
-            </div>
-          </div>
-        </div>
+          ${error ? `<div class="error-msg">⚠ ${escHtml(error)}</div>` : ''}
+          <button class="connect-btn" id="connect-btn" onclick="doConnect()"${stage >= 4 ? '' : ' disabled'}>${t('connectBtn')}</button>
+          <div class="go-hint" id="go-hint">${stage >= 4 ? '' : stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')}</div>
+        </section>
+        <section class="signal-pane ifb-pane">
+          <div class="signal-pane-head"><strong>IFB TALENT</strong><span class="path-chip">PROGRAM-MINUS + CUE</span></div>
+          <div id="ifb-return-slot"></div>
+        </section>
       </div>
-
-      <div class="optional-module-label">${t('ifbReturnOptional')}</div>
-      <div id="ifb-return-slot"></div>
-
-      ${error ? `<div class="error-msg">⚠ ${escHtml(error)}</div>` : ''}
-      <button class="connect-btn" id="connect-btn" onclick="doConnect()"${stage >= 4 ? '' : ' disabled'}>${t('connectBtn')}</button>
-      <div class="go-hint" id="go-hint">${stage >= 4 ? '' :
-        stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')}</div>
     </div>`
 
   // The IFB return is an optional module, so it must be mounted on the
@@ -914,6 +892,12 @@ function renderConnect(error) {
 // Only the pieces that depend on what has been filled in — re-rendering the
 // whole form on every keystroke would drop focus mid-typing.
 function refreshConnectState() {
+  // Event credentials are shared by Tally and IFB. Mirror what is currently
+  // typed so IFB can start independently before a switcher is connected.
+  const sharedRoom = document.getElementById('tallyRoom')
+  const sharedKey = document.getElementById('tallyApiKey')
+  if (sharedRoom) ui.savedRoom = sharedRoom.value
+  if (sharedKey) ui.savedApiKey = sharedKey.value
   const stage = connectStage()
   const btn = document.getElementById('connect-btn')
   if (btn) btn.disabled = stage < 4
@@ -1211,15 +1195,12 @@ function renderConnected() {
 
   if (!document.getElementById('connected-content')) {
     ma.innerHTML = `
-      <div class="connected-wrap" id="connected-content">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div>
-            <div class="conn-sub" id="conn-switcher-label">${switcherLabel}</div>
-            <div class="conn-room" id="conn-room-label">${t('room')}: \u2014</div>
-          </div>
-          <button class="disconnect-btn" onclick="doDisconnect()">${t('disconnect')}</button>
-        </div>
-        <div class="tally-monitor">
+      <div class="signal-console" id="connected-content">
+        <section class="event-rail"><div class="event-rail-title">EVENTO TALLYCOMM</div><div class="conn-sub" id="conn-switcher-label">${switcherLabel}</div><div class="conn-room" id="conn-room-label">${t('room')}: \u2014</div><button class="disconnect-btn" onclick="doDisconnect()">${t('disconnect')}</button></section>
+        <div class="signal-grid">
+        <section class="signal-pane tally-pane">
+          <div class="signal-pane-head"><strong>TALLY</strong><span class="path-chip">ACTIVO</span></div>
+          <div class="tally-monitor">
           <div class="tally-card" id="pgm-card">
             <div class="tally-card-bus">PROGRAM</div>
             <div class="tally-card-cam" id="pgm-cam">\u2014</div>
@@ -1231,7 +1212,6 @@ function renderConnected() {
             <div class="tally-card-scene" id="pvw-scene">${t('noSignal')}</div>
           </div>
         </div>
-        <div id="ifb-return-slot"></div>
         <div class="section-header">
           <div>
             <div class="section-title" id="mapping-title">${mapTitles[swType] || ''}</div>
@@ -1248,6 +1228,9 @@ function renderConnected() {
             <thead><tr><th>${colLabels[swType] || 'INPUT'}</th><th>${t('camTallycomm')}</th></tr></thead>
             <tbody id="scene-tbody-2"></tbody>
           </table>
+        </div>
+        </section>
+        <section class="signal-pane ifb-pane"><div class="signal-pane-head"><strong>IFB TALENT</strong><span class="path-chip">PROGRAM-MINUS + CUE</span></div><div id="ifb-return-slot"></div></section>
         </div>
       </div>`
   }
@@ -1497,6 +1480,12 @@ function clearLog() {
   if (scroll) scroll.innerHTML = ''
 }
 
+function toggleLogDrawer() {
+  const sidebar = document.getElementById('sidebar')
+  if (!sidebar) return
+  sidebar.classList.toggle('open')
+}
+
 // ── INIT ───────────────────────────────────────────────────────
 document.documentElement.lang = _lang
 applyLang()
@@ -1504,10 +1493,12 @@ renderConnect(null)
 </script>
 <script src="/vendor/livekit-client/livekit-client.umd.js"></script>
 <script src="/ifb-return.js"></script>
+<script src="/ifb-cue.js"></script>
 <script>
   // renderConnect() runs before the external module is loaded on first paint;
   // mount once more now so the optional IFB card is visible immediately.
   if (window.TallyBridgeIfbReturn) window.TallyBridgeIfbReturn.mount()
+  if (window.TallyBridgeIfbCue) window.TallyBridgeIfbCue.start()
 </script>
 <script src="/spike/ifb-capture-spike.js"></script>
 </body>

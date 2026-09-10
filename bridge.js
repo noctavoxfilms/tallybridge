@@ -53,6 +53,10 @@ app.get('/ifb-return.js', (req, res) => {
   res.setHeader('Cache-Control', 'no-store')
   res.sendFile(path.join(__dirname, 'ifb-return.js'))
 })
+app.get('/ifb-cue.js', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store')
+  res.sendFile(path.join(__dirname, 'ifb-cue.js'))
+})
 
 // ── Persistencia ──────────────────────────────────────────────
 const SAVE_FILE = path.join(
@@ -2131,6 +2135,37 @@ app.post('/api/ifb/token', async (req, res) => {
     clearTimeout(timer)
   }
 })
+
+// Same explicit event-scoped credential path as the existing IFB return.
+// The renderer talks only to this local process; the configured TallyComm URL
+// is the sole upstream destination for the event API key.
+async function proxyIfbCue(req, res, upstreamPath) {
+  const input = req.body || {}
+  const room = String(input.room || state.config.ifbRoom || state.config.tallyRoom || '').trim()
+  const apiKey = String(input.apiKey || state.config.ifbApiKey || state.config.tallyApiKey || '').trim()
+  const baseUrl = String(state.config.tallyUrl || 'https://tallycomm.com').trim().replace(/\/$/, '')
+  if (!room) return res.status(400).json({ error: 'Configurá la sala antes de usar cue IFB' })
+  if (!apiKey || !_isByteStringSafe(apiKey)) return res.status(400).json({ error: 'Configurá una API Key válida antes de usar cue IFB' })
+  if (!/^https?:\/\//i.test(baseUrl)) return res.status(400).json({ error: 'Configurá una URL válida de TallyComm antes de usar cue IFB' })
+  const timeout = new AbortController()
+  const timer = setTimeout(() => timeout.abort(), 8000)
+  try {
+    const upstream = await fetch(baseUrl + upstreamPath, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-tallycomm-key': apiKey },
+      body: JSON.stringify({ room }), signal: timeout.signal
+    })
+    const data = await upstream.json().catch(() => ({ error: 'Respuesta cue IFB inválida de TallyComm' }))
+    return res.status(upstream.status).json(data)
+  } catch (e) {
+    const message = e && e.name === 'AbortError' ? 'Tiempo agotado al consultar cue IFB' : 'No se pudo conectar al servicio cue IFB'
+    return res.status(502).json({ error: message })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+app.post('/api/ifb/cue-token', (req, res) => proxyIfbCue(req, res, '/api/ifb/cue-bridge-token'))
+app.post('/api/ifb/cue-state', (req, res) => proxyIfbCue(req, res, '/api/ifb/cue-state'))
 
 const SWITCHERS = ['obs','vmix','atem','tricaster','roland','osee','rgblink','avmatrix']
 const sanitizeSwitcher = s => SWITCHERS.includes(String(s)) ? String(s) : null

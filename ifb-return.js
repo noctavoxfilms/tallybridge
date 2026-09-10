@@ -27,6 +27,12 @@
     captureLimiter: null,
     captureDestination: null,
     captureTrack: null,
+    // Director cue is received privately by Bridge and joins this final IFB
+    // graph. Talent continues to receive only the single return publication.
+    cueTrack: null,
+    cueSource: null,
+    cueGain: null,
+    programGain: 4,
     inputListPending: false,
     inputAccessAttempted: false,
     inputAccessError: null,
@@ -53,8 +59,8 @@
     var source = typeof window.getTallyBridgeIfbConfig === 'function'
       ? (window.getTallyBridgeIfbConfig() || {})
       : {}
-    var roomEl = byId('ifb-return-room')
-    var apiKeyEl = byId('ifb-return-api-key')
+    var roomEl = byId('ifb-return-room') || byId('tallyRoom')
+    var apiKeyEl = byId('ifb-return-api-key') || byId('tallyApiKey')
     return {
       room: String(roomEl ? roomEl.value : (source.room || '')).trim(),
       apiKey: String(apiKeyEl ? apiKeyEl.value : (source.apiKey || '')).trim()
@@ -92,7 +98,6 @@
 
   function cardHtml() {
     var active = state.running
-    var config = currentConfig()
     return [
       '<section class="ifb-return optional" id="ifb-return-card" aria-labelledby="ifb-return-title">',
       '  <div class="ifb-return-head">',
@@ -106,16 +111,7 @@
       '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnNote', 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.')) + '</p>',
       '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnIndependent', 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.')) + '</p>',
       '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnGain', 'Applies a +12 dB recovery trim with a soft limiter before publishing.')) + '</p>',
-      '  <div class="ifb-return-config">',
-      '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnRoom', 'SALA TALLYCOMM')) + '</span>',
-      '      <input class="input" type="text" id="ifb-return-room" value="' + escapeHtml(config.room) + '" placeholder="SHOW26" autocorrect="off" autocapitalize="off" spellcheck="false">',
-      '      <span class="field-hint">' + escapeHtml(tr('ifbReturnRoomHint', 'Código del evento con miembros Talent')) + '</span>',
-      '    </label>',
-      '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnApiKey', 'API KEY DEL EVENTO')) + '</span>',
-      '      <input class="input" type="password" id="ifb-return-api-key" value="' + escapeHtml(config.apiKey) + '" placeholder="Desde el dashboard del evento" autocorrect="off" autocapitalize="off" spellcheck="false">',
-      '      <span class="field-hint">' + escapeHtml(tr('ifbReturnApiKeyHint', 'Desde el dashboard del evento · SWITCHER API KEY')) + '</span>',
-      '    </label>',
-      '  </div>',
+      '  <div class="ifb-cue-line"><span>CUE DE DIRECCIÓN</span><strong id="ifb-cue-status">ESPERANDO CONTROL</strong><small>Program −12 dB al hablar</small></div>',
       '  <div class="ifb-return-controls">',
       '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnInput', 'ENTRADA DE CONSOLA')) + '</span>',
       '      <select class="input" id="ifb-return-device" ' + (active || state.starting ? 'disabled' : '') + '>' +
@@ -286,6 +282,7 @@
   }
 
   function stopCaptureGraph() {
+    clearCueMix()
     if (state.captureSource) {
       try { state.captureSource.disconnect() } catch (error) {}
       state.captureSource = null
@@ -312,6 +309,45 @@
       })
       state.captureStream = null
     }
+  }
+
+  function setProgramDuck(active) {
+    if (!state.captureGain || !state.audioCtx) return
+    var target = active ? state.programGain * 0.2511886432 : state.programGain // −12 dB
+    try { state.captureGain.gain.setTargetAtTime(target, state.audioCtx.currentTime, active ? 0.018 : 0.075) } catch (error) {
+      state.captureGain.gain.value = target
+    }
+  }
+
+  function clearCueMix() {
+    if (state.cueSource) { try { state.cueSource.disconnect() } catch (error) {} }
+    if (state.cueGain) { try { state.cueGain.disconnect() } catch (error) {} }
+    state.cueSource = null
+    state.cueGain = null
+    setProgramDuck(false)
+  }
+
+  function attachCueMix() {
+    clearCueMix()
+    if (!state.cueTrack || !state.audioCtx || !state.captureLimiter || !state.running) return
+    try {
+      var stream = state.cueTrack.mediaStream || (state.cueTrack.track ? new MediaStream([state.cueTrack.track]) : null)
+      if (!stream) return
+      state.cueSource = state.audioCtx.createMediaStreamSource(stream)
+      state.cueGain = state.audioCtx.createGain()
+      state.cueGain.gain.value = 1
+      state.cueSource.connect(state.cueGain)
+      state.cueGain.connect(state.captureLimiter)
+      setProgramDuck(true)
+    } catch (error) {
+      clearCueMix()
+    }
+  }
+
+  function setCueTrack(track) {
+    if (state.cueTrack === track) return
+    state.cueTrack = track || null
+    attachCueMix()
   }
 
   function drawMeter() {
@@ -605,7 +641,8 @@
       await state.audioCtx.resume().catch(function () {})
       state.captureSource = state.audioCtx.createMediaStreamSource(state.captureStream)
       state.captureGain = state.audioCtx.createGain()
-      state.captureGain.gain.value = 4
+      state.programGain = 4
+      state.captureGain.gain.value = state.programGain
       // Keep the fixed recovery gain from clipping a hot line-level feed. The
       // limiter is intentionally gentle and lives before the published track;
       // the Bridge meter therefore shows exactly what Talent receives.
@@ -639,6 +676,7 @@
       state.auth = auth
       state.running = true
       state.starting = false
+      attachCueMix()
       state.status = 'active'
       state.statusText = tr('ifbReturnActive', 'PROGRAM-MINUS ACTIVO PARA TALENT AUTORIZADO')
       startMeter(track)
@@ -714,5 +752,10 @@
     })
   }
 
-  window.TallyBridgeIfbReturn = { mount: mount, stop: stop }
+  window.TallyBridgeIfbReturn = {
+    mount: mount,
+    stop: stop,
+    setCueTrack: setCueTrack,
+    isRunning: function () { return !!state.running }
+  }
 })()
