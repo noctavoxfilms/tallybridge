@@ -58,7 +58,7 @@ html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sa
 .signal-pane{min-height:0;overflow:auto;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);padding:13px;}
 .signal-pane.ifb-pane{border-color:rgba(61,158,255,.38);background:linear-gradient(180deg,rgba(61,158,255,.055),var(--s1) 34%);}
 .signal-pane-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;padding-bottom:9px;border-bottom:1px solid var(--b1);font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--txt3);}.signal-pane-head strong{font-size:12px;color:var(--txt);font-weight:400;}.signal-pane-head .path-chip{padding:3px 6px;border:1px solid var(--b2);color:var(--txt4);font-size:8px;white-space:nowrap;}.ifb-pane .path-chip{border-color:rgba(61,158,255,.35);color:var(--blu);}
-.tally-setup{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(260px,1.1fr);gap:12px;align-items:start;}.tally-setup .form-card{margin:0;}.tally-setup .switch-row{margin:0;grid-template-columns:repeat(4,minmax(0,1fr));}.tally-setup .switch-opt{min-height:78px;padding:9px 6px;}.tally-setup .switch-opt-icon{font-size:22px;}.tally-setup .switch-opt-name{font-size:13px;}.tally-setup .switch-opt-badge{font-size:7px;}
+.tally-setup{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(260px,1.1fr);gap:12px;align-items:start;}.tally-setup .form-card{margin:0;}.tally-setup .switch-row{margin:0;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));}.tally-setup .switch-opt{min-height:78px;padding:9px 6px;min-width:0;}.tally-setup .switch-opt-icon{font-size:22px;min-width:0;}.tally-setup .switch-opt-name{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.tally-setup .switch-opt-badge{font-size:7px;}
 
 /* CONNECT FORM */
 .connect-wrap{max-width:1040px;margin:22px auto;padding:0 22px 40px;}
@@ -116,7 +116,7 @@ select.input option{background:#1a1a1a;}
 .switch-opt.active{background:var(--blu-bg);border-color:var(--blu);color:var(--blu);}
 .switch-opt-icon{display:flex;align-items:center;justify-content:center;height:32px;margin-bottom:8px;}
 .switch-opt-icon svg{width:28px;height:28px;display:block;}
-.switch-opt-icon img{max-height:30px;max-width:110px;width:auto;height:auto;display:block;
+.switch-opt-icon img{max-height:30px;max-width:100%;width:auto;height:auto;display:block;
   object-fit:contain;-webkit-user-select:none;user-select:none;-webkit-user-drag:none;pointer-events:none;
   /* Slight desaturation when inactive to harmonize with the dim selector state. */
   filter:brightness(.92);transition:filter .12s;}
@@ -239,24 +239,24 @@ select.input option{background:#1a1a1a;}
 /* IFB RETURN — intentionally operational, not a second mixer. It inherits the
    existing monitor visual language and stays physically separate from tally
    mapping so the source cannot be mistaken for a camera control. */
-.ifb-return{margin:0 0 20px;padding:16px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);}
+.ifb-return{margin:0;padding:14px;background:var(--s1);border:1px solid var(--b1);border-radius:var(--radius);}
 .optional-module-label{margin:24px 0 8px;font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--txt4);}
 .ifb-return.optional{border-color:rgba(61,158,255,.32);background:linear-gradient(180deg,rgba(61,158,255,.055),var(--s1) 42%);}
-.ifb-return-head{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;}
+.ifb-return-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;}
 .ifb-return-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--blu);}
-.ifb-return-title{margin-top:3px;font-size:18px;font-weight:800;letter-spacing:.05em;color:var(--txt2);}
+.ifb-return-title{margin-top:3px;font-size:16px;font-weight:800;letter-spacing:.04em;color:var(--txt2);}
 .ifb-return-extra{display:inline-block;margin-left:8px;padding:3px 6px;border:1px solid rgba(61,158,255,.35);border-radius:2px;color:var(--blu);font-family:var(--mono);font-size:8px;letter-spacing:.1em;vertical-align:middle;}
 .ifb-return-chip{flex-shrink:0;padding:5px 8px;border:1px solid var(--b2);border-radius:2px;color:var(--txt4);font-family:var(--mono);font-size:9px;letter-spacing:.09em;}
 .ifb-return-chip.active{border-color:var(--grn);background:var(--grn-bg);color:var(--grn);}
 .ifb-return-chip.error{border-color:var(--red);background:var(--red-bg);color:var(--red);}
-.ifb-return-note{max-width:740px;margin:8px 0 14px;font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--txt3);}
-.ifb-cue-line{display:grid;grid-template-columns:auto 1fr auto;gap:9px;align-items:center;margin:0 0 14px;padding:8px 10px;border:1px solid rgba(61,158,255,.28);background:rgba(61,158,255,.05);font-family:var(--mono);font-size:9px;letter-spacing:.07em;color:var(--txt4);}
-.ifb-cue-line strong{min-width:0;color:var(--blu);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ifb-cue-line small{font-size:8px;color:var(--txt4);letter-spacing:0;}
+.ifb-return-note{max-width:740px;margin:7px 0 11px;font-family:var(--mono);font-size:10px;line-height:1.5;color:var(--txt3);}
+.ifb-cue-line{display:grid;grid-template-columns:minmax(0,1fr) minmax(112px,.55fr);gap:12px;align-items:center;margin:0 0 12px;padding:9px 10px;border:1px solid rgba(61,158,255,.28);background:rgba(61,158,255,.05);font-family:var(--mono);font-size:9px;letter-spacing:.07em;color:var(--txt4);}
+.ifb-cue-line span{display:block;margin-bottom:3px;color:var(--txt4);}.ifb-cue-line strong{display:block;min-width:0;color:var(--blu);font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}.ifb-cue-meter-wrap{min-width:0;}.ifb-return-meter-fill.cue{background:linear-gradient(90deg,var(--blu),#c0e1ff);}
 .ifb-return-config{display:grid;grid-template-columns:minmax(180px,1fr) minmax(220px,1fr);gap:12px;margin:0 0 14px;padding:14px 0 0;border-top:1px solid var(--b1);}
 .ifb-return-config .field{margin:0;}
 .ifb-return-config .field-hint{display:block;margin-top:5px;font-family:var(--mono);font-size:9px;line-height:1.45;color:var(--txt4);}
 .ifb-return-config .input{width:100%;}
-.ifb-return-controls{display:grid;grid-template-columns:minmax(190px,1fr) minmax(150px,1fr) auto;gap:12px;align-items:end;}
+.ifb-return-controls{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(130px,.85fr);gap:12px;align-items:end;}
 .ifb-return-controls .field{margin:0;}
 .ifb-return-input-refresh{display:block;margin-top:6px;padding:0;border:0;background:transparent;color:var(--txt4);font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-align:left;cursor:pointer;}
 .ifb-return-input-refresh:hover:not(:disabled){color:var(--blu);}
@@ -266,8 +266,8 @@ select.input option{background:#1a1a1a;}
 .ifb-return-meter-fill{height:100%;width:0;background:linear-gradient(90deg,var(--grn),var(--ylw));transition:width .08s linear;}
 .ifb-return-meter-label{display:flex;justify-content:space-between;margin-top:6px;font-family:var(--mono);font-size:9px;letter-spacing:.09em;color:var(--txt4);}
 .ifb-return-meter-label strong{font-weight:400;color:var(--txt3);}
-.ifb-return-actions{display:flex;gap:7px;}
-.ifb-return-actions button{min-height:37px;padding:0 12px;border-radius:var(--radius);font-family:var(--mono);font-size:10px;letter-spacing:.08em;cursor:pointer;transition:all .12s;}
+.ifb-return-actions{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:7px;}
+.ifb-return-actions button{min-width:0;min-height:37px;padding:0 11px;border-radius:var(--radius);font-family:var(--mono);font-size:10px;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;transition:all .12s;}
 .ifb-return-start{border:1px solid rgba(61,158,255,.55);background:var(--blu-bg);color:var(--blu);}
 .ifb-return-start:hover:not(:disabled){border-color:var(--blu);color:#d8ecff;}
 .ifb-return-stop{border:1px solid var(--b2);background:var(--s2);color:var(--txt3);}
@@ -306,6 +306,9 @@ select.input option{background:#1a1a1a;}
   .tally-monitor{grid-template-columns:1fr 1fr;}
   .ifb-return-config{grid-template-columns:1fr;gap:10px;}
   .ifb-return-controls{grid-template-columns:1fr;}
+  .ifb-return-actions{grid-template-columns:1fr 1fr;}
+  .ifb-return-start{grid-column:1/-1;}
+  .ifb-cue-line{grid-template-columns:1fr;gap:8px;}
 }
 </style>
 </head>
@@ -440,9 +443,10 @@ var _i = {
   enterApiKey:      { en: 'API Key is required. Get it from your event dashboard.', es: 'La API Key es obligatoria. Obtenela desde el dashboard del evento.' },
   selected:         { en: 'SELECTED',        es: 'SELECCIONADO' },
   connectedTo:      { en: 'CONNECTED TO',    es: 'CONECTADO A' },
-  ifbReturnTitle:   { en: 'TALENT RETURN',   es: 'RETORNO PARA TALENT' },
+  ifbReturnKicker:  { en: 'AUDIO ROUTE FOR TALENT', es: 'RUTA DE AUDIO PARA TALENT' },
+  ifbReturnTitle:   { en: 'IFB FOR TALENT',   es: 'IFB PARA TALENT' },
   ifbReturnOptional:{ en: 'OPTIONAL EXTRA',  es: 'OPCIONAL' },
-  ifbReturnNote:    { en: 'Publishes the selected Program-Minus mix only to authorized talent. It does not open camera or crew intercom.', es: 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.' },
+  ifbReturnNote:    { en: 'Sends the selected program audio to Talent. The Director Cue enters privately over the same route.', es: 'Envía el audio de programa seleccionado a Talent. El Cue del Director entra de forma privada sobre la misma ruta.' },
   ifbReturnIndependent:{ en: 'This is independent from switcher tally. Configure it here and start it even when no switcher is connected.', es: 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.' },
   ifbReturnGain:    { en: 'Applies a +12 dB recovery trim with a soft limiter before publishing.', es: 'Aplica un refuerzo de recuperación de +12 dB con limitador suave antes de publicar.' },
   ifbReturnRoom:    { en: 'TALLYCOMM ROOM',  es: 'SALA TALLYCOMM' },
@@ -451,16 +455,19 @@ var _i = {
   ifbReturnApiKeyHint:{ en: 'From the event dashboard · SWITCHER API KEY', es: 'Desde el dashboard del evento · SWITCHER API KEY' },
   ifbReturnNeedRoom:{ en: 'Enter the TallyComm room for the IFB return', es: 'Ingresá la sala de TallyComm para el retorno IFB' },
   ifbReturnNeedApiKey:{ en: 'Enter the event API key for the IFB return', es: 'Ingresá la API key del evento para el retorno IFB' },
-  ifbReturnInput:   { en: 'CONSOLE INPUT',   es: 'ENTRADA DE CONSOLA' },
-  ifbReturnLevel:   { en: 'INPUT LEVEL',     es: 'NIVEL DE ENTRADA' },
-  ifbReturnStart:   { en: 'START RETURN',    es: 'INICIAR RETORNO' },
-  ifbReturnStarting:{ en: 'PREPARING…',      es: 'PREPARANDO…' },
-  ifbReturnStop:    { en: 'STOP',            es: 'DETENER' },
-  ifbReturnRefresh: { en: 'REFRESH TALENT',  es: 'ACTUALIZAR TALENTS' },
+  ifbReturnInput:   { en: 'PROGRAM AUDIO INPUT', es: 'ENTRADA DE PROGRAMA' },
+  ifbReturnLevel:   { en: 'PROGRAM AUDIO',   es: 'AUDIO DE PROGRAMA' },
+  ifbReturnStart:   { en: 'START IFB ROUTE', es: 'INICIAR RUTA IFB' },
+  ifbReturnStarting:{ en: 'PREPARING ROUTE…', es: 'PREPARANDO RUTA…' },
+  ifbReturnStop:    { en: 'STOP ROUTE',      es: 'DETENER RUTA' },
+  ifbReturnRefresh: { en: 'REFRESH TALENT',  es: 'ACTUALIZAR TALENT' },
   ifbReturnRefreshing:{ en: 'UPDATING…',      es: 'ACTUALIZANDO…' },
-  ifbReturnOnAir:   { en: 'ON AIR',          es: 'AL AIRE' },
-  ifbReturnOff:     { en: 'OFF',             es: 'APAGADO' },
-  ifbReturnReady:   { en: 'READY TO START RETURN', es: 'LISTO PARA INICIAR EL RETORNO' },
+  ifbReturnOnAir:   { en: 'ROUTE ACTIVE',    es: 'RUTA ACTIVA' },
+  ifbReturnOff:     { en: 'ROUTE STOPPED',   es: 'RUTA DETENIDA' },
+  ifbReturnReady:   { en: 'READY TO START IFB ROUTE', es: 'LISTO PARA INICIAR RUTA IFB' },
+  ifbCueLabel:      { en: 'DIRECTOR CUE',    es: 'CUE DEL DIRECTOR' },
+  ifbCueReady:      { en: 'READY FOR DIRECTOR CUE', es: 'LISTO PARA CUE DEL DIRECTOR' },
+  ifbCueLevel:      { en: 'CUE RX',          es: 'CUE RX' },
   ifbReturnNoInput: { en: 'No audio inputs available', es: 'No hay entradas de audio disponibles' },
   ifbReturnNoInputState:{ en: 'NO AUDIO INPUT', es: 'SIN ENTRADA DE AUDIO' },
   ifbReturnRequestingInput:{ en: 'REQUESTING AUDIO INPUT ACCESS…', es: 'SOLICITANDO ACCESO A ENTRADAS…' },
@@ -472,8 +479,8 @@ var _i = {
   ifbReturnChooseInput:{ en: 'CHOOSE A CONSOLE INPUT', es: 'ELEGÍ UNA ENTRADA DE CONSOLA' },
   ifbReturnAuthorizing:{ en: 'VALIDATING IFB RETURN…', es: 'VALIDANDO RETORNO IFB…' },
   ifbReturnConnecting:{ en: 'CONNECTING IFB RETURN…', es: 'CONECTANDO RETORNO IFB…' },
-  ifbReturnOpeningInput:{ en: 'OPENING CONSOLE INPUT…', es: 'ABRIENDO ENTRADA DE CONSOLA…' },
-  ifbReturnActive:{ en: 'PROGRAM-MINUS ACTIVE FOR AUTHORIZED TALENT', es: 'PROGRAM-MINUS ACTIVO PARA TALENT AUTORIZADO' },
+  ifbReturnOpeningInput:{ en: 'OPENING PROGRAM AUDIO INPUT…', es: 'ABRIENDO ENTRADA DE PROGRAMA…' },
+  ifbReturnActive:{ en: 'IFB ROUTE ACTIVE FOR AUTHORIZED TALENT', es: 'RUTA IFB ACTIVA PARA TALENT AUTORIZADO' },
   ifbReturnRecipientsUpdated:{ en: 'AUTHORIZED TALENT UPDATED', es: 'DESTINATARIOS TALENT ACTUALIZADOS' },
   ifbReturnRecipientsFailed:{ en: 'TALENT NOT UPDATED; RETURN REMAINS ACTIVE', es: 'NO SE ACTUALIZARON LOS DESTINATARIOS; RETORNO ACTIVO' },
   ifbReturnStopped:{ en: 'RETURN STOPPED', es: 'RETORNO DETENIDO' },
@@ -877,7 +884,7 @@ function renderConnect(error) {
           <div class="go-hint" id="go-hint">${stage >= 4 ? '' : stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')}</div>
         </section>
         <section class="signal-pane ifb-pane">
-          <div class="signal-pane-head"><strong>IFB TALENT</strong><span class="path-chip">PROGRAM-MINUS + CUE</span></div>
+          <div class="signal-pane-head"><strong>IFB PARA TALENT</strong><span class="path-chip">AUDIO DE PROGRAMA + CUE</span></div>
           <div id="ifb-return-slot"></div>
         </section>
       </div>
@@ -1230,7 +1237,7 @@ function renderConnected() {
           </table>
         </div>
         </section>
-        <section class="signal-pane ifb-pane"><div class="signal-pane-head"><strong>IFB TALENT</strong><span class="path-chip">PROGRAM-MINUS + CUE</span></div><div id="ifb-return-slot"></div></section>
+        <section class="signal-pane ifb-pane"><div class="signal-pane-head"><strong>IFB PARA TALENT</strong><span class="path-chip">AUDIO DE PROGRAMA + CUE</span></div><div id="ifb-return-slot"></div></section>
         </div>
       </div>`
   }

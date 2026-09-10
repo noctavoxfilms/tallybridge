@@ -32,6 +32,9 @@
     cueTrack: null,
     cueSource: null,
     cueGain: null,
+    cueAnalyser: null,
+    cueMeterSink: null,
+    cueMeterFrame: 0,
     programGain: 4,
     inputListPending: false,
     inputAccessAttempted: false,
@@ -102,31 +105,29 @@
       '<section class="ifb-return optional" id="ifb-return-card" aria-labelledby="ifb-return-title">',
       '  <div class="ifb-return-head">',
       '    <div>',
-      '      <div class="ifb-return-kicker">IFB RETURN · PROGRAM-MINUS <span class="ifb-return-extra">' + escapeHtml(tr('ifbReturnOptional', 'OPCIONAL')) + '</span></div>',
-      '      <div class="ifb-return-title" id="ifb-return-title">' + escapeHtml(tr('ifbReturnTitle', 'RETORNO PARA TALENT')) + '</div>',
+      '      <div class="ifb-return-kicker">' + escapeHtml(tr('ifbReturnKicker', 'RUTA DE AUDIO PARA TALENT')) + '</div>',
+      '      <div class="ifb-return-title" id="ifb-return-title">' + escapeHtml(tr('ifbReturnTitle', 'IFB PARA TALENT')) + '</div>',
       '    </div>',
       '    <div class="ifb-return-chip ' + (active ? 'active' : state.status === 'error' ? 'error' : '') + '" id="ifb-return-chip">' +
-            (active ? escapeHtml(tr('ifbReturnOnAir', 'AL AIRE')) : escapeHtml(tr('ifbReturnOff', 'APAGADO'))) + '</div>',
+            (active ? escapeHtml(tr('ifbReturnOnAir', 'RUTA ACTIVA')) : escapeHtml(tr('ifbReturnOff', 'RUTA DETENIDA'))) + '</div>',
       '  </div>',
-      '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnNote', 'Publica la mezcla Program-Minus seleccionada únicamente a los talentos autorizados. No abre el intercom de cámaras ni crew.')) + '</p>',
-      '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnIndependent', 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.')) + '</p>',
-      '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnGain', 'Applies a +12 dB recovery trim with a soft limiter before publishing.')) + '</p>',
-      '  <div class="ifb-cue-line"><span>CUE DE DIRECCIÓN</span><strong id="ifb-cue-status">ESPERANDO CONTROL</strong><small>Program −12 dB al hablar</small></div>',
+      '  <p class="ifb-return-note">' + escapeHtml(tr('ifbReturnNote', 'Envía el audio de programa seleccionado a Talent. El Cue del Director entra de forma privada sobre la misma ruta.')) + '</p>',
+      '  <div class="ifb-cue-line"><div><span>' + escapeHtml(tr('ifbCueLabel', 'CUE DEL DIRECTOR')) + '</span><strong id="ifb-cue-status">' + escapeHtml(tr('ifbCueReady', 'LISTO PARA CUE DEL DIRECTOR')) + '</strong></div><div class="ifb-cue-meter-wrap"><div class="ifb-return-meter" aria-label="' + escapeHtml(tr('ifbCueLevel', 'Nivel de Cue')) + '"><div class="ifb-return-meter-fill cue" id="ifb-cue-meter-fill"></div></div><div class="ifb-return-meter-label"><span>' + escapeHtml(tr('ifbCueLevel', 'CUE RX')) + '</span><strong id="ifb-cue-meter-value">0%</strong></div></div></div>',
       '  <div class="ifb-return-controls">',
-      '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnInput', 'ENTRADA DE CONSOLA')) + '</span>',
+      '    <label class="field"><span class="field-label">' + escapeHtml(tr('ifbReturnInput', 'ENTRADA DE PROGRAMA')) + '</span>',
       '      <select class="input" id="ifb-return-device" ' + (active || state.starting ? 'disabled' : '') + '>' +
                 (active ? '<option value="' + escapeHtml(state.deviceId) + '">' + escapeHtml(state.deviceLabel || tr('ifbReturnSelectedInput', 'Entrada seleccionada')) + '</option>' : '') +
               '</select>',
       '      <button class="ifb-return-input-refresh" id="ifb-return-input-refresh" type="button" ' + (active || state.starting ? 'disabled' : '') + '>' + escapeHtml(tr('ifbReturnRefreshInputs', 'ACTUALIZAR ENTRADAS')) + '</button>',
       '    </label>',
       '    <div class="ifb-return-meter-wrap">',
-      '      <div class="ifb-return-meter" aria-label="' + escapeHtml(tr('ifbReturnLevel', 'Nivel de entrada')) + '"><div class="ifb-return-meter-fill" id="ifb-return-meter-fill"></div></div>',
-      '      <div class="ifb-return-meter-label"><span>' + escapeHtml(tr('ifbReturnLevel', 'NIVEL DE ENTRADA')) + '</span><strong id="ifb-return-meter-value">0%</strong></div>',
+      '      <div class="ifb-return-meter" aria-label="' + escapeHtml(tr('ifbReturnLevel', 'Nivel de audio de programa')) + '"><div class="ifb-return-meter-fill" id="ifb-return-meter-fill"></div></div>',
+      '      <div class="ifb-return-meter-label"><span>' + escapeHtml(tr('ifbReturnLevel', 'AUDIO DE PROGRAMA')) + '</span><strong id="ifb-return-meter-value">0%</strong></div>',
       '    </div>',
       '    <div class="ifb-return-actions">',
-      '      <button class="ifb-return-start" id="ifb-return-start" type="button" ' + (active || state.starting ? 'disabled' : '') + '>' + escapeHtml(state.starting ? tr('ifbReturnStarting', 'PREPARANDO…') : tr('ifbReturnStart', 'INICIAR RETORNO')) + '</button>',
-      '      <button class="ifb-return-refresh" id="ifb-return-refresh" type="button" ' + (!active || state.refreshing ? 'disabled' : '') + '>' + escapeHtml(state.refreshing ? tr('ifbReturnRefreshing', 'ACTUALIZANDO…') : tr('ifbReturnRefresh', 'ACTUALIZAR TALENTS')) + '</button>',
-      '      <button class="ifb-return-stop" id="ifb-return-stop" type="button" ' + (!active ? 'disabled' : '') + '>' + escapeHtml(tr('ifbReturnStop', 'DETENER')) + '</button>',
+      '      <button class="ifb-return-start" id="ifb-return-start" type="button" ' + (active || state.starting ? 'disabled' : '') + '>' + escapeHtml(state.starting ? tr('ifbReturnStarting', 'PREPARANDO RUTA…') : tr('ifbReturnStart', 'INICIAR RUTA IFB')) + '</button>',
+      '      <button class="ifb-return-refresh" id="ifb-return-refresh" type="button" ' + (!active || state.refreshing ? 'disabled' : '') + '>' + escapeHtml(state.refreshing ? tr('ifbReturnRefreshing', 'ACTUALIZANDO…') : tr('ifbReturnRefresh', 'ACTUALIZAR TALENT')) + '</button>',
+      '      <button class="ifb-return-stop" id="ifb-return-stop" type="button" ' + (!active ? 'disabled' : '') + '>' + escapeHtml(tr('ifbReturnStop', 'DETENER RUTA')) + '</button>',
       '    </div>',
       '  </div>',
       '  <div class="ifb-return-state ' + escapeHtml(state.status) + '" id="ifb-return-state">' + escapeHtml(statusText()) + '</div>',
@@ -320,34 +321,81 @@
   }
 
   function clearCueMix() {
+    if (state.cueMeterFrame) cancelAnimationFrame(state.cueMeterFrame)
+    state.cueMeterFrame = 0
     if (state.cueSource) { try { state.cueSource.disconnect() } catch (error) {} }
     if (state.cueGain) { try { state.cueGain.disconnect() } catch (error) {} }
+    if (state.cueAnalyser) { try { state.cueAnalyser.disconnect() } catch (error) {} }
+    if (state.cueMeterSink) { try { state.cueMeterSink.disconnect() } catch (error) {} }
     state.cueSource = null
     state.cueGain = null
+    state.cueAnalyser = null
+    state.cueMeterSink = null
+    var fill = byId('ifb-cue-meter-fill')
+    var value = byId('ifb-cue-meter-value')
+    if (fill) fill.style.width = '0%'
+    if (value) value.textContent = '0%'
     setProgramDuck(false)
+  }
+
+  function drawCueMeter() {
+    if (!state.cueAnalyser) return
+    var samples = new Float32Array(state.cueAnalyser.fftSize)
+    if (typeof state.cueAnalyser.getFloatTimeDomainData === 'function') {
+      state.cueAnalyser.getFloatTimeDomainData(samples)
+    } else {
+      var bytes = new Uint8Array(state.cueAnalyser.fftSize)
+      state.cueAnalyser.getByteTimeDomainData(bytes)
+      for (var b = 0; b < bytes.length; b++) samples[b] = (bytes[b] - 128) / 128
+    }
+    var sum = 0
+    for (var i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
+    var level = Math.min(100, Math.round(Math.sqrt(sum / samples.length) * 320))
+    var fill = byId('ifb-cue-meter-fill')
+    var value = byId('ifb-cue-meter-value')
+    if (fill) fill.style.width = level + '%'
+    if (value) value.textContent = level + '%'
+    state.cueMeterFrame = requestAnimationFrame(drawCueMeter)
   }
 
   function attachCueMix() {
     clearCueMix()
-    if (!state.cueTrack || !state.audioCtx || !state.captureLimiter || !state.running) return
+    if (!state.cueTrack || !state.audioCtx || !state.captureLimiter || !state.running) return false
     try {
-      var stream = state.cueTrack.mediaStream || (state.cueTrack.track ? new MediaStream([state.cueTrack.track]) : null)
-      if (!stream) return
+      // LiveKit RemoteAudioTrack exposes the browser MediaStreamTrack through
+      // mediaStreamTrack. `mediaStream`/`track` are not public RemoteTrack
+      // properties, so the old fallback quietly skipped the Cue graph.
+      var mediaTrack = state.cueTrack.mediaStreamTrack ||
+        (state.cueTrack.track && state.cueTrack.track.mediaStreamTrack)
+      var stream = mediaTrack ? new MediaStream([mediaTrack]) : null
+      if (!stream) return false
       state.cueSource = state.audioCtx.createMediaStreamSource(stream)
       state.cueGain = state.audioCtx.createGain()
+      state.cueAnalyser = state.audioCtx.createAnalyser()
+      state.cueAnalyser.fftSize = 512
+      state.cueAnalyser.smoothingTimeConstant = 0.18
+      state.cueMeterSink = state.audioCtx.createGain()
+      state.cueMeterSink.gain.value = 0
       state.cueGain.gain.value = 1
       state.cueSource.connect(state.cueGain)
-      state.cueGain.connect(state.captureLimiter)
+      state.cueGain.connect(state.cueAnalyser)
+      state.cueAnalyser.connect(state.captureLimiter)
+      // Keep the analyser live without making Cue audible in the Bridge.
+      state.cueAnalyser.connect(state.cueMeterSink)
+      state.cueMeterSink.connect(state.audioCtx.destination)
       setProgramDuck(true)
+      drawCueMeter()
+      return true
     } catch (error) {
       clearCueMix()
+      return false
     }
   }
 
   function setCueTrack(track) {
-    if (state.cueTrack === track) return
+    if (state.cueTrack === track) return !!state.cueSource
     state.cueTrack = track || null
-    attachCueMix()
+    return attachCueMix()
   }
 
   function drawMeter() {

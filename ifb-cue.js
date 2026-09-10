@@ -58,10 +58,13 @@
   function attachTrack(track, publication, participant) {
     if (!isExpectedPublication(publication, participant) || !track || track.kind !== LivekitClient.Track.Kind.Audio) return
     state.attachedTrack = track
+    var mixed = false
     if (window.TallyBridgeIfbReturn && typeof window.TallyBridgeIfbReturn.setCueTrack === 'function') {
-      window.TallyBridgeIfbReturn.setCueTrack(track)
+      mixed = window.TallyBridgeIfbReturn.setCueTrack(track) === true
     }
-    setStatus('active', 'DIRECCIÓN HABLANDO · PROGRAM −12 dB')
+    setStatus(mixed ? 'active' : 'error', mixed
+      ? 'DIRECTOR HABLANDO · AUDIO DE PROGRAMA ATENUADO'
+      : 'CUE RECIBIDO · INICIÁ LA RUTA IFB')
   }
   function updateSubscriptions() {
     if (!state.room || !state.auth || !window.LivekitClient) return
@@ -75,13 +78,13 @@
   function applyLease(lease) {
     var nextIdentity = lease && lease.active && typeof lease.identity === 'string' ? lease.identity : ''
     if (nextIdentity === state.activeIdentity) {
-      if (!nextIdentity && state.status !== 'ready') setStatus('ready', 'LISTO PARA CUE DE DIRECCIÓN')
+      if (!nextIdentity && state.status !== 'ready') setStatus('ready', 'LISTO PARA CUE DEL DIRECTOR')
       return
     }
     state.activeIdentity = nextIdentity
     clearAttachedTrack()
     updateSubscriptions()
-    setStatus(nextIdentity ? 'waiting-track' : 'ready', nextIdentity ? 'DIRECCIÓN CONECTANDO…' : 'LISTO PARA CUE DE DIRECCIÓN')
+    setStatus(nextIdentity ? 'waiting-track' : 'ready', nextIdentity ? 'DIRECTOR CONECTANDO…' : 'LISTO PARA CUE DEL DIRECTOR')
   }
   async function pollLease() {
     if (state.stopping || !state.connected) return
@@ -112,7 +115,7 @@
     if (!hasConfig()) { setStatus('idle', 'CONFIGURÁ EL EVENTO PARA CUE'); scheduleRetry(); return }
     if (!window.LivekitClient || !LivekitClient.Room) { setStatus('error', 'MÓDULO CUE NO DISPONIBLE'); return }
     state.connecting = true
-    setStatus('connecting', 'CONECTANDO CUE DE DIRECCIÓN…')
+    setStatus('connecting', 'CONECTANDO CUE DEL DIRECTOR…')
     try {
       var auth = await api('/api/ifb/cue-token')
       if (!auth || typeof auth.token !== 'string' || typeof auth.livekitUrl !== 'string' ||
@@ -123,7 +126,7 @@
       room.on(LivekitClient.RoomEvent.TrackPublished, function () { updateSubscriptions() })
       room.on(LivekitClient.RoomEvent.TrackSubscribed, function (track, publication, participant) { attachTrack(track, publication, participant) })
       room.on(LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
-        if (track === state.attachedTrack) { clearAttachedTrack(); setStatus('waiting-track', 'DIRECCIÓN CONECTANDO…') }
+        if (track === state.attachedTrack) { clearAttachedTrack(); setStatus('waiting-track', 'DIRECTOR CONECTANDO…') }
       })
       room.on(LivekitClient.RoomEvent.ParticipantDisconnected, function (participant) {
         if (participant && participant.identity === state.activeIdentity) applyLease({ active: false })
