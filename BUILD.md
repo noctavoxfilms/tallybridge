@@ -156,8 +156,12 @@ El script:
 1. Valida que las env vars existan
 2. Verifica que el cert esté en Keychain
 3. Corre `npm run build:mac` con hardened runtime + entitlements + notarización automática via `@electron/notarize`
-4. Notarización toma 1–3 min (Apple escanea el binario)
-5. Output: `dist/TallyBridge-X.Y.Z-{x64,arm64}.dmg` firmado + notarizado
+4. Notariza y adjunta el ticket de Apple a cada contenedor `.dmg`; además valida el ticket y el DMG antes de continuar
+5. Regenera los `.blockmap` y `latest-mac.yml` **después** del stapling, para que el auto-updater publique los hashes reales
+6. Notarización toma 1–3 min (Apple escanea el binario)
+7. Output: `dist/TallyBridge-X.Y.Z-{x64,arm64}.dmg` firmado, notarizado y listo para publicar junto a sus `.blockmap` y `latest-mac.yml`
+
+> Al publicar un release de macOS, sube los dos `.dmg`, sus dos `.dmg.blockmap` y `latest-mac.yml` del mismo build. No mezcles archivos de builds distintos.
 
 ### Verificar la firma
 
