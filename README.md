@@ -1,78 +1,116 @@
-# TallyBridge v1.2.2 — TallyComm
+# TallyBridge v1.5.14 — TallyComm
 
-Conecta tu switcher de video a [TallyComm](https://tallycomm.com) sin instalar Bitfocus Companion. App de escritorio para Mac y Windows.
+TallyBridge conecta switchers de video y una entrada de consola de audio con [TallyComm](https://tallycomm.com). La app de escritorio puede operar dos rutas independientes y simultáneas:
+
+- **Tally:** PGM/PVW desde el switcher hacia cámaras.
+- **IFB + Cue:** Program-Minus desde la consola y Cue privado del Director hacia Talent.
+
+No hace falta instalar Bitfocus Companion. El módulo IFB también puede funcionar sin conectar ningún switcher.
 
 ## Descargar
 
-Descarga el instalador para tu plataforma desde [GitHub Releases](https://github.com/noctavoxfilms/tallybridge/releases/latest):
+Usa la página oficial de [TallyBridge](https://tallycomm.com/bridge), que detecta la plataforma y enlaza el release vigente. Los artefactos también están en [GitHub Releases](https://github.com/noctavoxfilms/tallybridge/releases/latest):
 
-- **Mac (Apple Silicon):** `TallyBridge-*-arm64.dmg`
-- **Mac (Intel):** `TallyBridge-*.dmg`
-- **Windows (x64):** `TallyBridge.Setup.*.exe`
-- **Windows (ARM64):** `TallyBridge.Setup.*-arm64.exe`
+- **Mac Apple Silicon:** `TallyBridge-*-arm64.dmg`, firmado y notarizado por Apple.
+- **Mac Intel:** `TallyBridge-*.dmg`, firmado y notarizado por Apple.
+- **Windows x64/ARM64:** `TallyBridge.Setup.*.exe`, instalador universal sin firma comercial de Windows.
+
+En Mac debe abrirse la app instalada desde el DMG. Un `.app` suelto producido por un build local puede estar firmado ad hoc pero no notarizado y Gatekeeper lo rechazará; eso no describe el DMG publicado.
 
 ## Switchers soportados
 
-| Switcher | Protocolo | Estado |
-|----------|-----------|--------|
-| OBS Studio | WebSocket v5 | ✅ Disponible |
-| RGBlink mini | UDP (puerto 1000) | ✅ Disponible |
-| ATEM | — | 🔜 Próximamente |
-| vMix | — | 🔜 Próximamente |
+| Switcher | Protocolo |
+|----------|-----------|
+| OBS Studio | WebSocket v5 |
+| vMix | TCP API |
+| Blackmagic ATEM | `atem-connection` |
+| NewTek/Vizrt TriCaster | HTTP + WebSocket v1 |
+| Roland Smart Tally | HTTP |
+| Osee GoStream | TCP :19010 |
+| RGBlink mini | UDP :1000 |
+| AVMatrix | UDP :19523/:19522 |
 
-## Uso
+Los buses PGM/PVW aceptan varias cámaras simultáneas cuando el switcher reporta composiciones, overlays, keyers o transiciones.
 
-1. Abre TallyBridge
-2. Selecciona tu switcher (OBS o RGBlink)
-3. Ingresa el nombre de sala (el mismo código que usan los operadores en TallyComm)
-4. Click **CONECTAR**
-5. Asigna cada escena/input a una cámara (1-6), o usa **AUTO-DETECTAR** para OBS
-6. Cuando cambies de escena en tu switcher, el tally llega instantáneamente a los camarógrafos
+## Uso de Tally
 
-## Configurar OBS
+1. Abre TallyBridge y escribe el código de evento y su Switcher API Key.
+2. Selecciona el switcher y completa sus datos de red.
+3. Usa **PROBAR** para verificar la conexión sin enviar tally.
+4. Asigna fuentes a CAM 1–8 o usa el mapeo automático cuando esté disponible.
+5. Selecciona **CONECTAR TALLY**.
 
-1. En OBS: **Tools → WebSocket Server Settings**
-2. Activa **"Enable WebSocket Server"**
-3. Puerto: `4455` (por defecto)
-4. Si usas contraseña, ingrésala también en TallyBridge
-5. Click **OK**
+La pérdida del switcher apaga PGM/PVW de forma segura. La ruta IFB, si está activa, continúa funcionando de manera independiente.
 
-## Configurar RGBlink mini
+## Uso de IFB + Cue
 
-1. Asegúrate de que el RGBlink mini esté en la misma red que tu computadora
-2. En TallyBridge, ingresa la IP del dispositivo (visible en la pantalla del RGBlink)
-3. Puerto por defecto: `1000`
-4. TallyBridge auto-mapea Input 1 → CAM 1, Input 2 → CAM 2, etc.
+1. Configura el mismo evento y API key.
+2. En la zona IFB, elige la entrada que recibe el Program-Minus preparado por la consola.
+3. Selecciona **INICIAR RUTA IFB**. No es necesario conectar Tally.
+4. Talent recibe una sola salida `ifb-program-minus` desde Bridge.
+5. Cuando un Director mantiene **CUE A TALENTO**, Bridge mezcla su voz privadamente y atenúa Program-Minus 12 dB sólo mientras detecta voz real.
+
+Program-Minus entra a ganancia unitaria. La consola define el nivel nominal; Bridge conserva un limitador para picos inesperados. Talent ajusta la escucha con el volumen físico del teléfono o audífonos y dispone de mute IFB explícito.
+
+Estados esperados del Cue:
+
+- `LISTO PARA CUE DEL DIRECTOR`
+- `DIRECTOR CONECTANDO`
+- `CUE CONECTADO · ESPERANDO AUDIO`
+- `DIRECTOR HABLANDO · AUDIO DE PROGRAMA ATENUADO`
+
+La publicación Cue no pertenece a CAMS/PROD. El servidor autoriza sólo a Directores, usa una sala privada y un lease con expiración; Bridge es el único mezclador y Talent permanece receive-only.
+
+## Qué corrigió v1.5.14
+
+- Electron recibía RTP del Cue pero Web Audio obtenía silencio. Ahora `RemoteAudioTrack.attach()` inicia el playout/decodificación en un elemento local muteado y su `srcObject` alimenta el mixer.
+- El duck ya no se activa por la mera existencia de un track: requiere señal por encima de aproximadamente -44 dBFS durante dos frames y conserva unos 250 ms de release.
+- Se retiró el boost fijo de +12 dB que hacía demasiado alto el IFB; Program-Minus queda en unity.
+- El selector conserva el nombre de la entrada mientras la ruta está activa o la UI se reconstruye.
+- Los estados Cue están localizados EN/ES.
+- La Signal Console cabe completa en la ventana mínima 800×600: ocho logos, configuración Tally y controles IFB sin scroll ni botones recortados.
+- La interfaz visible no usa emojis.
+
+## Verificación E2E de referencia
+
+El 11 de septiembre de 2026 se validó la cadena real Mac Director → LiveKit Cue privado → TallyBridge → mixer IFB → iOS Talent. Bridge registró la secuencia completa de conexión/voz/restauración, un pico Cue de 71 % y el usuario confirmó la escucha de la frase privada en Talent.
+
+Queda pendiente ampliar la matriz a Director Android físico, Bluetooth/AirPods, pérdida de red durante Cue, dos Directores simultáneos y feeds Program-Minus silencioso/nominal/caliente.
 
 ## Desarrollo
 
-Requiere Node.js 18+.
+Requiere Node.js 18 o superior.
 
 ```bash
 npm install
-
-# Servidor solo (abre el browser)
-npm start
-
-# App Electron completa
-npm run electron
-
-# Build
+npm start          # servidor local
+npm run electron   # app Electron
 npm run build:mac
 npm run build:win
-npm run build:all
 ```
+
+Antes de un release:
+
+```bash
+node --check ifb-return.js
+node --check ifb-cue.js
+git diff --check
+```
+
+El tag `vX.Y.Z` dispara GitHub Actions: Windows universal y dos DMG de Mac firmados/notarizados. Consulta [BUILD.md](BUILD.md) para el procedimiento y las verificaciones de firma.
 
 ## TallyBridge vs Companion
 
 | | TallyBridge | Companion Module |
 |---|---|---|
-| Instalación | App nativa (DMG/EXE) | Plugin dentro de Companion |
-| Configuración | UI auto-detect | Manual en Companion |
-| Switchers | OBS, RGBlink | 700+ via Companion |
-| Complejidad | Plug and play | Flexible pero requiere setup |
+| Instalación | App de escritorio | Plugin dentro de Companion |
+| Switchers | 8 integraciones directas | 700+ mediante Companion |
+| Tally PGM/PVW | Sí | Sí |
+| IFB Program-Minus + Cue | Sí | No |
+| Configuración | Guiada | Flexible/manual |
 
-Ambos usan el mismo endpoint `POST /api/tally` de TallyComm.
+Ambos usan el endpoint protegido `POST /api/tally`; IFB y Cue usan endpoints LiveKit aislados adicionales.
 
 ---
-[TallyComm](https://tallycomm.com) — Noctavox Films
+
+[TallyComm](https://tallycomm.com) — Noctavox

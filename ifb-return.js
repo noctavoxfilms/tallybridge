@@ -30,12 +30,20 @@
     // Director cue is received privately by Bridge and joins this final IFB
     // graph. Talent continues to receive only the single return publication.
     cueTrack: null,
+    cueElementTrack: null,
+    cueElement: null,
     cueSource: null,
     cueGain: null,
     cueAnalyser: null,
     cueMeterSink: null,
     cueMeterFrame: 0,
-    programGain: 4,
+    // Unity is the safe broadcast default. The former fixed +12 dB boost
+    // made a normal line/program feed excessively loud for every Talent and
+    // left the device volume with very little useful travel.
+    programGain: 1,
+    cueSignalActive: false,
+    cueSignalFrames: 0,
+    cueSilenceFrames: 0,
     inputListPending: false,
     inputAccessAttempted: false,
     inputAccessError: null,
@@ -155,6 +163,17 @@
     var stop = byId('ifb-return-stop')
     var input = byId('ifb-return-device')
     var inputRefresh = byId('ifb-return-input-refresh')
+    // The host can rebuild this optional card while Start is awaiting
+    // authorization or getUserMedia. Preserve the selected device visibly;
+    // an empty disabled selector falsely suggests that the live route lost
+    // its console input even though capture is still healthy.
+    if (input && (state.starting || state.running) && state.deviceId && !input.options.length) {
+      var selected = document.createElement('option')
+      selected.value = state.deviceId
+      selected.textContent = state.deviceLabel || tr('ifbReturnSelectedInput', 'Entrada seleccionada')
+      selected.selected = true
+      input.appendChild(selected)
+    }
     if (start) {
       start.disabled = state.running || state.starting || !input || !input.value || !configReady(config)
       start.textContent = state.starting ? tr('ifbReturnStarting', 'PREPARANDO…') : tr('ifbReturnStart', 'INICIAR RETORNO')
@@ -323,6 +342,15 @@
   function clearCueMix() {
     if (state.cueMeterFrame) cancelAnimationFrame(state.cueMeterFrame)
     state.cueMeterFrame = 0
+    if (state.cueElementTrack && state.cueElement) {
+      try { state.cueElementTrack.detach(state.cueElement) } catch (error) {}
+    }
+    if (state.cueElement) {
+      try { state.cueElement.pause() } catch (error) {}
+      try { state.cueElement.srcObject = null } catch (error) {}
+    }
+    state.cueElementTrack = null
+    state.cueElement = null
     if (state.cueSource) { try { state.cueSource.disconnect() } catch (error) {} }
     if (state.cueGain) { try { state.cueGain.disconnect() } catch (error) {} }
     if (state.cueAnalyser) { try { state.cueAnalyser.disconnect() } catch (error) {} }
@@ -331,11 +359,26 @@
     state.cueGain = null
     state.cueAnalyser = null
     state.cueMeterSink = null
+    state.cueSignalActive = false
+    state.cueSignalFrames = 0
+    state.cueSilenceFrames = 0
     var fill = byId('ifb-cue-meter-fill')
     var value = byId('ifb-cue-meter-value')
     if (fill) fill.style.width = '0%'
     if (value) value.textContent = '0%'
     setProgramDuck(false)
+  }
+
+  function setCueSignalActive(active, forceStatus) {
+    if (state.cueSignalActive === active && !forceStatus) return
+    state.cueSignalActive = active
+    setProgramDuck(active)
+    var status = byId('ifb-cue-status')
+    if (status) {
+      status.textContent = active
+        ? tr('ifbCueSpeaking', 'DIRECTOR SPEAKING · PROGRAM AUDIO ATTENUATED')
+        : tr('ifbCueWaitingAudio', 'CUE CONNECTED · WAITING FOR AUDIO')
+    }
   }
 
   function drawCueMeter() {
@@ -350,11 +393,26 @@
     }
     var sum = 0
     for (var i = 0; i < samples.length; i++) sum += samples[i] * samples[i]
-    var level = Math.min(100, Math.round(Math.sqrt(sum / samples.length) * 320))
+    var rms = Math.sqrt(sum / samples.length)
+    var level = Math.min(100, Math.round(rms * 320))
     var fill = byId('ifb-cue-meter-fill')
     var value = byId('ifb-cue-meter-value')
     if (fill) fill.style.width = level + '%'
     if (value) value.textContent = level + '%'
+    // A publication is not proof of useful audio: native clients can publish
+    // a valid RTP track containing silence. Duck only after real samples cross
+    // -44 dBFS for two animation frames, then hold for roughly 250 ms so word
+    // endings do not pump Program. This also makes a silent Director mic
+    // visible instead of pretending that Cue is being heard.
+    if (rms >= 0.0063) {
+      state.cueSignalFrames += 1
+      state.cueSilenceFrames = 0
+      if (state.cueSignalFrames >= 2) setCueSignalActive(true)
+    } else {
+      state.cueSignalFrames = 0
+      state.cueSilenceFrames += 1
+      if (state.cueSilenceFrames >= 15) setCueSignalActive(false)
+    }
     state.cueMeterFrame = requestAnimationFrame(drawCueMeter)
   }
 
@@ -362,12 +420,28 @@
     clearCueMix()
     if (!state.cueTrack || !state.audioCtx || !state.captureLimiter || !state.running) return false
     try {
-      // LiveKit RemoteAudioTrack exposes the browser MediaStreamTrack through
-      // mediaStreamTrack. `mediaStream`/`track` are not public RemoteTrack
-      // properties, so the old fallback quietly skipped the Cue graph.
+      // Let LiveKit attach the remote track first. In Chromium/Electron an
+      // inbound WebRTC receiver can accumulate RTP packets while its raw
+      // MediaStreamTrack still yields digital silence to Web Audio until a
+      // media element starts playout. The element stays muted locally; its
+      // srcObject is only used as the decoded source for the private IFB mix.
       var mediaTrack = state.cueTrack.mediaStreamTrack ||
         (state.cueTrack.track && state.cueTrack.track.mediaStreamTrack)
-      var stream = mediaTrack ? new MediaStream([mediaTrack]) : null
+      var cueElement = typeof state.cueTrack.attach === 'function'
+        ? state.cueTrack.attach()
+        : null
+      if (cueElement) {
+        cueElement.autoplay = true
+        cueElement.muted = true
+        cueElement.volume = 0
+        var playPromise = cueElement.play()
+        if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(function () {})
+        state.cueElementTrack = state.cueTrack
+        state.cueElement = cueElement
+      }
+      var stream = cueElement && cueElement.srcObject instanceof MediaStream
+        ? cueElement.srcObject
+        : (mediaTrack ? new MediaStream([mediaTrack]) : null)
       if (!stream) return false
       state.cueSource = state.audioCtx.createMediaStreamSource(stream)
       state.cueGain = state.audioCtx.createGain()
@@ -383,7 +457,8 @@
       // Keep the analyser live without making Cue audible in the Bridge.
       state.cueAnalyser.connect(state.cueMeterSink)
       state.cueMeterSink.connect(state.audioCtx.destination)
-      setProgramDuck(true)
+      setProgramDuck(false)
+      setCueSignalActive(false, true)
       drawCueMeter()
       return true
     } catch (error) {
@@ -592,6 +667,9 @@
     if (state.running || state.starting || state.stopping) return
     var input = byId('ifb-return-device')
     state.deviceId = input && input.value ? input.value : ''
+    state.deviceLabel = input && input.selectedIndex >= 0
+      ? input.options[input.selectedIndex].textContent
+      : state.deviceLabel
     if (!state.deviceId) {
       state.status = 'error'
       state.statusText = tr('ifbReturnChooseInput', 'ELEGÍ UNA ENTRADA DE CONSOLA')
@@ -666,10 +744,8 @@
       state.statusText = tr('ifbReturnOpeningInput', 'ABRIENDO ENTRADA DE CONSOLA…')
       renderStatus()
       // Capture through a Web Audio gain stage before handing the track to
-      // LiveKit. A console/Program-Minus feed often arrives 10–15 dB below a
-      // browser microphone's nominal level; a 12 dB trim restores usable
-      // headroom while the Bridge meter shows the post-trim signal. Talent
-      // remains at unity and uses the phone's hardware volume.
+      // LiveKit. Keep the Bridge at unity: the console is the authority for
+      // Program-Minus level, while Talent uses the device listening volume.
       var inputConstraints = {
         audio: {
           deviceId: { exact: state.deviceId },
@@ -689,11 +765,10 @@
       await state.audioCtx.resume().catch(function () {})
       state.captureSource = state.audioCtx.createMediaStreamSource(state.captureStream)
       state.captureGain = state.audioCtx.createGain()
-      state.programGain = 4
+      state.programGain = 1
       state.captureGain.gain.value = state.programGain
-      // Keep the fixed recovery gain from clipping a hot line-level feed. The
-      // limiter is intentionally gentle and lives before the published track;
-      // the Bridge meter therefore shows exactly what Talent receives.
+      // Keep unexpected line-level peaks from clipping. The limiter lives
+      // before the published track, so the Bridge meter shows what Talent gets.
       state.captureLimiter = state.audioCtx.createDynamicsCompressor()
       state.captureLimiter.threshold.value = -3
       state.captureLimiter.knee.value = 6

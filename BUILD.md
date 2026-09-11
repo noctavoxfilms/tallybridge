@@ -1,5 +1,7 @@
 # TallyBridge — Instrucciones de Build
 
+Versión de release documentada: **1.5.14**. Incluye Tally + IFB Program-Minus + Cue privado del Director.
+
 ## Requisitos
 
 - Node.js 18+ → https://nodejs.org
@@ -70,13 +72,13 @@ npm run electron
 ```bash
 npm run build:mac
 ```
-Salida: `dist/TallyBridge-1.0.0.dmg` (universal: Intel + Apple Silicon)
+Salida: `dist/TallyBridge-X.Y.Z-{x64,arm64}.dmg` (un DMG por arquitectura)
 
 ### Windows (genera instalador .exe)
 ```bash
 npm run build:win
 ```
-Salida: `dist/TallyBridge Setup 1.0.0.exe`
+Salida: `dist/TallyBridge.Setup.X.Y.Z.exe` (instalador universal x64 + ARM64)
 
 ### Ambos a la vez
 ```bash
@@ -101,16 +103,18 @@ tallybridge/
 │   ├── icon.icns       ← Mac (generado)
 │   └── icon.ico        ← Windows (generado)
 └── dist/               ← generado por electron-builder
-    ├── TallyBridge-1.0.0.dmg
-    └── TallyBridge Setup 1.0.0.exe
+    ├── TallyBridge-X.Y.Z-arm64.dmg
+    ├── TallyBridge-X.Y.Z-x64.dmg
+    └── TallyBridge.Setup.X.Y.Z.exe
 ```
 
 ---
 
 ## Distribución a clientes
 
-Sube los archivos de `dist/` a tallycomm.com para que los clientes los descarguen.
-Página sugerida: `tallycomm.com/bridge`
+El tag `vX.Y.Z` publica los archivos de `dist/` en GitHub Releases. La página
+`tallycomm.com/bridge` consulta ese release y es el punto de descarga público;
+no se copian binarios manualmente al servidor web.
 
 ---
 
@@ -177,6 +181,27 @@ spctl --assess --type exec --verbose dist/mac-arm64/TallyBridge.app
 xcrun stapler validate dist/TallyBridge-1.4.0-arm64.dmg
 # Output esperado: "The validate action worked!"
 ```
+
+## Checklist de release
+
+1. Incrementar `version` en `package.json` y en las dos entradas raíz de `package-lock.json`.
+2. Ejecutar `node --check ifb-return.js`, `node --check ifb-cue.js` y compilar los scripts inline de `bridge-ui.html` con `new Function`.
+3. Ejecutar `git diff --check` y revisar que sólo haya cambios previstos.
+4. Verificar visualmente 800×600 y un viewport amplio. La pantalla mínima debe mostrar los ocho switchers y los controles completos de IFB.
+5. Si cambió audio, probar Start/Stop, Program-Minus, Cue con señal real, duck y restauración. Una publicación RTP sin nivel no cuenta como audio válido.
+6. Commit y push de `main`.
+7. Crear y empujar el tag exacto: `git tag vX.Y.Z` y `git push origin vX.Y.Z`.
+8. Esperar los jobs `build-windows`, `build-mac` y `release` del workflow `Build TallyBridge`.
+9. Descargar el DMG público, validar `xcrun stapler validate`, montar y ejecutar. No validar sólo el `.app` suelto de `dist/mac-*`: el artefacto de distribución es el DMG notarizado.
+10. Confirmar que GitHub Release contiene dos DMG, sus blockmaps, el instalador Windows y su blockmap, además de los metadatos del updater generados por el mismo build.
+
+### Validación específica IFB + Cue de v1.5.14
+
+- `RemoteAudioTrack.attach()` debe ejecutarse antes de crear el `MediaStreamAudioSourceNode`; el elemento queda muteado y sólo habilita la decodificación de Chromium/Electron.
+- El estado `DIRECTOR HABLANDO` y el duck -12 dB sólo aparecen al superar el umbral RMS, no al recibir una publicación silenciosa.
+- Program-Minus se publica a unity (`programGain = 1`); la consola es la autoridad de nivel.
+- Al soltar Cue, el medidor vuelve a cero, Program-Minus recupera nivel y el estado vuelve a `LISTO PARA CUE DEL DIRECTOR`.
+- A 800×600 no debe haber scroll para alcanzar `INICIAR RUTA IFB`, `REFRESCAR TALENT` ni `DETENER RUTA`.
 
 ### Windows signing (diferido)
 

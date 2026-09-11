@@ -300,6 +300,10 @@ select.input option{background:#1a1a1a;}
 ::-webkit-scrollbar-thumb{background:var(--b2);border-radius:2px;}
 
 /* RESPONSIVE */
+@media(max-width:900px){
+  .ifb-return-actions{grid-template-columns:1fr 1fr;}
+  .ifb-return-start{grid-column:1/-1;}
+}
 @media(max-width:700px){
   .layout{flex-direction:column;}
   .sidebar{width:100%;border-left:none;border-top:1px solid var(--b1);height:220px;}
@@ -309,6 +313,28 @@ select.input option{background:#1a1a1a;}
   .ifb-return-actions{grid-template-columns:1fr 1fr;}
   .ifb-return-start{grid-column:1/-1;}
   .ifb-cue-line{grid-template-columns:1fr;gap:8px;}
+}
+@media(max-height:700px){
+  .signal-console{padding:8px;gap:8px;}
+  .event-rail{padding:6px 9px;}
+  .event-rail-title{padding-bottom:8px;}
+  .signal-grid{gap:8px;}
+  .signal-pane{padding:9px;}
+  .signal-pane-head{margin-bottom:7px;padding-bottom:7px;}
+  .last-session{margin-bottom:8px;padding:8px 10px;}
+  .tally-setup{gap:8px;}
+  .tally-setup:has(.pick-hint){grid-template-columns:1fr;}
+  .tally-setup .form-card:has(.pick-hint){display:none;}
+  .tally-setup:has(.switch-opt.active){grid-template-columns:minmax(92px,.35fr) minmax(220px,1.65fr);}
+  .tally-setup:has(.switch-opt.active) .switch-opt:not(.active){display:none;}
+  .tally-setup .switch-opt{min-height:68px;padding:7px 5px;}
+  .tally-setup .switch-opt-icon{height:26px;margin-bottom:5px;}
+  .ifb-return-note{display:none;}
+  .ifb-cue-line{margin-bottom:8px;padding:7px 8px;}
+  .ifb-return-controls{gap:8px;}
+  .ifb-return-input-refresh{margin-top:4px;}
+  .ifb-return-actions button{min-height:34px;}
+  .ifb-return-state{margin-top:8px;}
 }
 </style>
 </head>
@@ -376,7 +402,7 @@ var _i = {
   // Mensajes del registro. El servidor manda la clave y los datos; el texto se
   // arma acá para que también cambie al tocar el selector de idioma.
   logConnecting:      { en: 'Connecting to {name} at {target}…', es: 'Conectando a {name} en {target}…' },
-  logConnected:       { en: 'Connected to {name} ✓',   es: 'Conectado a {name} ✓' },
+  logConnected:       { en: 'Connected to {name}',     es: 'Conectado a {name}' },
   logDisconnected:    { en: '{name} disconnected',     es: '{name} desconectado' },
   logManualDisconnect:{ en: 'Disconnected manually',   es: 'Desconectado manualmente' },
   logNoRoom:          { en: 'No room configured — tally ignored', es: 'Sin sala configurada — tally ignorado' },
@@ -448,7 +474,6 @@ var _i = {
   ifbReturnOptional:{ en: 'OPTIONAL EXTRA',  es: 'OPCIONAL' },
   ifbReturnNote:    { en: 'Sends the selected program audio to Talent. The Director Cue enters privately over the same route.', es: 'Envía el audio de programa seleccionado a Talent. El Cue del Director entra de forma privada sobre la misma ruta.' },
   ifbReturnIndependent:{ en: 'This is independent from switcher tally. Configure it here and start it even when no switcher is connected.', es: 'Es independiente del tally del switcher. Configuralo aquí y activalo aunque no haya un switcher conectado.' },
-  ifbReturnGain:    { en: 'Applies a +12 dB recovery trim with a soft limiter before publishing.', es: 'Aplica un refuerzo de recuperación de +12 dB con limitador suave antes de publicar.' },
   ifbReturnRoom:    { en: 'TALLYCOMM ROOM',  es: 'SALA TALLYCOMM' },
   ifbReturnRoomHint: { en: 'Event code with Talent members', es: 'Código del evento con miembros Talent' },
   ifbReturnApiKey:  { en: 'EVENT API KEY',   es: 'API KEY DEL EVENTO' },
@@ -468,6 +493,15 @@ var _i = {
   ifbCueLabel:      { en: 'DIRECTOR CUE',    es: 'CUE DEL DIRECTOR' },
   ifbCueReady:      { en: 'READY FOR DIRECTOR CUE', es: 'LISTO PARA CUE DEL DIRECTOR' },
   ifbCueLevel:      { en: 'CUE RX',          es: 'CUE RX' },
+  ifbCueWaitingAudio:{ en: 'CUE CONNECTED · WAITING FOR AUDIO', es: 'CUE CONECTADO · ESPERANDO AUDIO' },
+  ifbCueSpeaking:   { en: 'DIRECTOR SPEAKING · PROGRAM AUDIO ATTENUATED', es: 'DIRECTOR HABLANDO · AUDIO DE PROGRAMA ATENUADO' },
+  ifbCueNeedsRoute: { en: 'CUE RECEIVED · START IFB ROUTE', es: 'CUE RECIBIDO · INICIÁ LA RUTA IFB' },
+  ifbCueDirectorConnecting:{ en: 'DIRECTOR CONNECTING…', es: 'DIRECTOR CONECTANDO…' },
+  ifbCueUnavailable:{ en: 'CUE UNAVAILABLE', es: 'CUE NO DISPONIBLE' },
+  ifbCueConfigureEvent:{ en: 'CONFIGURE THE EVENT FOR CUE', es: 'CONFIGURÁ EL EVENTO PARA CUE' },
+  ifbCueModuleUnavailable:{ en: 'CUE MODULE UNAVAILABLE', es: 'MÓDULO CUE NO DISPONIBLE' },
+  ifbCueConnecting: { en: 'CONNECTING DIRECTOR CUE…', es: 'CONECTANDO CUE DEL DIRECTOR…' },
+  ifbCueDisconnected:{ en: 'CUE DISCONNECTED', es: 'CUE DESCONECTADO' },
   ifbReturnNoInput: { en: 'No audio inputs available', es: 'No hay entradas de audio disponibles' },
   ifbReturnNoInputState:{ en: 'NO AUDIO INPUT', es: 'SIN ENTRADA DE AUDIO' },
   ifbReturnRequestingInput:{ en: 'REQUESTING AUDIO INPUT ACCESS…', es: 'SOLICITANDO ACCESO A ENTRADAS…' },
@@ -838,7 +872,7 @@ function connectStage() {
 }
 
 function stepHtml(n, title, state) {
-  return `<div class="step ${state}"><span class="n">${state === 'done' ? '✓' : n}</span>` +
+  return `<div class="step ${state}"><span class="n">${state === 'done' ? 'OK' : n}</span>` +
          `<span class="ttl">${title}</span><span class="bar"></span></div>`
 }
 
@@ -879,7 +913,7 @@ function renderConnect(error) {
               <div class="switch-opt ${sw === k ? 'active' : ''}" onclick="selectSwitcher('${k}')">${tag ? `<span class="sw-tag">${tag}</span>` : ''}<span class="switch-opt-icon">${brandIcon(k)}</span><div class="switch-opt-name">${n}</div><div class="switch-opt-badge">${sw === k ? t('selected') : sub}</div></div>`).join('')}</div></div>
             <div class="form-card ${stage >= 3 ? 'ok' : stage === 2 ? 'now' : ''}" id="switcher-fields">${fields}<div id="probe-result">${renderProbeResult()}</div></div>
           </div>
-          ${error ? `<div class="error-msg">⚠ ${escHtml(error)}</div>` : ''}
+          ${error ? `<div class="error-msg">${escHtml(error)}</div>` : ''}
           <button class="connect-btn" id="connect-btn" onclick="doConnect()"${stage >= 4 ? '' : ' disabled'}>${t('connectBtn')}</button>
           <div class="go-hint" id="go-hint">${stage >= 4 ? '' : stage < 2 ? t('needSwitcher') : stage < 3 ? t('needProbe') : t('needTallycomm')}</div>
         </section>
@@ -918,7 +952,7 @@ function refreshConnectState() {
   steps.forEach((el, i) => {
     el.className = 'step ' + (st[i + 1] || '')
     const n = el.querySelector('.n')
-    if (n) n.textContent = st[i + 1] === 'done' ? '✓' : String(i + 1)
+    if (n) n.textContent = st[i + 1] === 'done' ? 'OK' : String(i + 1)
   })
   const blks = document.querySelectorAll('.connect-wrap .blk')
   if (blks[0]) blks[0].className = 'blk ' + (stage < 2 ? 'locked' : '')
@@ -933,10 +967,10 @@ function renderProbeResult() {
   if (!p) return ''
   if (p.ok) {
     const src = p.sources ? ' ' + t('probeOkSources').replace('{n}', p.sources) : ''
-    return `<div class="probe-msg ok"><span>✓</span><div>${escHtml(p.device || '')}${src}<br>
+    return `<div class="probe-msg ok"><span>OK</span><div>${escHtml(p.device || '')}${src}<br>
       <span style="color:var(--txt2)">${t('probeOkNext')}</span></div></div>`
   }
-  return `<div class="probe-msg err"><span>✗</span><div>${t('probeFail')} ${escHtml(p.error || '')}</div></div>`
+  return `<div class="probe-msg err"><span>ERROR</span><div>${t('probeFail')} ${escHtml(p.error || '')}</div></div>`
 }
 
 // Opens a real connection so the answer can say what the device is, then drops

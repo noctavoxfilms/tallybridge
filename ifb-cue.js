@@ -62,9 +62,12 @@
     if (window.TallyBridgeIfbReturn && typeof window.TallyBridgeIfbReturn.setCueTrack === 'function') {
       mixed = window.TallyBridgeIfbReturn.setCueTrack(track) === true
     }
-    setStatus(mixed ? 'active' : 'error', mixed
-      ? 'DIRECTOR HABLANDO · AUDIO DE PROGRAMA ATENUADO'
-      : 'CUE RECIBIDO · INICIÁ LA RUTA IFB')
+    // A subscribed RTP track may still carry digital silence. The analyser in
+    // ifb-return.js is the authority that changes this to DIRECTOR HABLANDO
+    // and ducks Program only after it measures real samples.
+    setStatus(mixed ? 'waiting-audio' : 'error', mixed
+      ? tr('ifbCueWaitingAudio', 'CUE CONNECTED · WAITING FOR AUDIO')
+      : tr('ifbCueNeedsRoute', 'CUE RECEIVED · START IFB ROUTE'))
   }
   function updateSubscriptions() {
     if (!state.room || !state.auth || !window.LivekitClient) return
@@ -78,13 +81,15 @@
   function applyLease(lease) {
     var nextIdentity = lease && lease.active && typeof lease.identity === 'string' ? lease.identity : ''
     if (nextIdentity === state.activeIdentity) {
-      if (!nextIdentity && state.status !== 'ready') setStatus('ready', 'LISTO PARA CUE DEL DIRECTOR')
+      if (!nextIdentity && state.status !== 'ready') setStatus('ready', tr('ifbCueReady', 'READY FOR DIRECTOR CUE'))
       return
     }
     state.activeIdentity = nextIdentity
     clearAttachedTrack()
     updateSubscriptions()
-    setStatus(nextIdentity ? 'waiting-track' : 'ready', nextIdentity ? 'DIRECTOR CONECTANDO…' : 'LISTO PARA CUE DEL DIRECTOR')
+    setStatus(nextIdentity ? 'waiting-track' : 'ready', nextIdentity
+      ? tr('ifbCueDirectorConnecting', 'DIRECTOR CONNECTING…')
+      : tr('ifbCueReady', 'READY FOR DIRECTOR CUE'))
   }
   async function pollLease() {
     if (state.stopping || !state.connected) return
@@ -95,7 +100,7 @@
       // A missing event/Bridge configuration is not a reason to disturb the
       // active Program-Minus path. Clear any cue source and retry quietly.
       applyLease({ active: false })
-      setStatus('error', 'CUE NO DISPONIBLE')
+      setStatus('error', tr('ifbCueUnavailable', 'CUE UNAVAILABLE'))
     }
   }
   function startPolling() {
@@ -112,10 +117,10 @@
   }
   async function connect() {
     if (state.connected || state.connecting || state.stopping) return
-    if (!hasConfig()) { setStatus('idle', 'CONFIGURÁ EL EVENTO PARA CUE'); scheduleRetry(); return }
-    if (!window.LivekitClient || !LivekitClient.Room) { setStatus('error', 'MÓDULO CUE NO DISPONIBLE'); return }
+    if (!hasConfig()) { setStatus('idle', tr('ifbCueConfigureEvent', 'CONFIGURE THE EVENT FOR CUE')); scheduleRetry(); return }
+    if (!window.LivekitClient || !LivekitClient.Room) { setStatus('error', tr('ifbCueModuleUnavailable', 'CUE MODULE UNAVAILABLE')); return }
     state.connecting = true
-    setStatus('connecting', 'CONECTANDO CUE DEL DIRECTOR…')
+    setStatus('connecting', tr('ifbCueConnecting', 'CONNECTING DIRECTOR CUE…'))
     try {
       var auth = await api('/api/ifb/cue-token')
       if (!auth || typeof auth.token !== 'string' || typeof auth.livekitUrl !== 'string' ||
@@ -126,7 +131,7 @@
       room.on(LivekitClient.RoomEvent.TrackPublished, function () { updateSubscriptions() })
       room.on(LivekitClient.RoomEvent.TrackSubscribed, function (track, publication, participant) { attachTrack(track, publication, participant) })
       room.on(LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
-        if (track === state.attachedTrack) { clearAttachedTrack(); setStatus('waiting-track', 'DIRECTOR CONECTANDO…') }
+        if (track === state.attachedTrack) { clearAttachedTrack(); setStatus('waiting-track', tr('ifbCueDirectorConnecting', 'DIRECTOR CONNECTING…')) }
       })
       room.on(LivekitClient.RoomEvent.ParticipantDisconnected, function (participant) {
         if (participant && participant.identity === state.activeIdentity) applyLease({ active: false })
@@ -135,7 +140,7 @@
         if (room !== state.room) return
         state.room = null; state.auth = null; state.connected = false; state.connecting = false
         clearAttachedTrack()
-        if (!state.stopping) { setStatus('error', 'CUE DESCONECTADO'); scheduleRetry() }
+        if (!state.stopping) { setStatus('error', tr('ifbCueDisconnected', 'CUE DISCONNECTED')); scheduleRetry() }
       })
       await room.connect(auth.livekitUrl, auth.token, { autoSubscribe: false })
       if (state.stopping || room !== state.room) { try { room.disconnect() } catch (error) {} return }
@@ -149,7 +154,7 @@
       if (state.room) { try { state.room.disconnect() } catch (ignore) {} }
       state.room = null; state.auth = null
       clearAttachedTrack()
-      setStatus('error', 'CUE NO DISPONIBLE')
+      setStatus('error', tr('ifbCueUnavailable', 'CUE UNAVAILABLE'))
       scheduleRetry()
     }
   }
